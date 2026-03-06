@@ -21,6 +21,7 @@
 [![No Tracking](https://img.shields.io/badge/Tracking-None-red?style=flat-square)]()
 
 </div>
+
 ---
 
 ## What is ScratchDump?
