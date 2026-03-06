@@ -169,11 +169,9 @@ git clone https://github.com/gr-rim/scratch-dump.git
 
 <br>
 
-```
-Every cent helps.
+*Every cent helps.
 Even a fraction of one.
-I'm not even joking.
-```
+I'm not even joking.*
 
 <br>
 
