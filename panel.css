@@ -1,0 +1,700 @@
+/* panel.css */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,700;1,400&display=swap');
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #1c1c1e;
+  --bg2: #2c2c2e;
+  --bg3: #3a3a3c;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f0f0f0;
+  --text2: #aaa;
+  --text3: #666;
+  --accent: #4f7cff;
+  --accent-hover: #3a65e0;
+  --danger: #e5392a;
+  --btn-bg: rgba(255, 255, 255, 0.07);
+  --btn-hover: rgba(255, 255, 255, 0.13);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --radius: 8px;
+  --bar-h: 38px;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.theme-light {
+  --bg: #ffffff;
+  --bg2: #f5f5f7;
+  --bg3: #ebebed;
+  --border: rgba(0, 0, 0, 0.09);
+  --text: #1a1a1a;
+  --text2: #666;
+  --text3: #999;
+  --btn-bg: rgba(0, 0, 0, 0.05);
+  --btn-hover: rgba(0, 0, 0, 0.1);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.theme-dark {
+  --bg: #1c1c1e;
+  --bg2: #2c2c2e;
+  --bg3: #3a3a3c;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f0f0f0;
+  --text2: #aaa;
+  --text3: #666;
+  --btn-bg: rgba(255, 255, 255, 0.07);
+  --btn-hover: rgba(255, 255, 255, 0.13);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  font-family: var(--font-ui);
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* ─── MAIN PANEL ─── */
+.main-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition: background 0.2s;
+}
+
+/* ─── TOP BAR ─── */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--bar-h);
+  padding: 0 8px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.top-left,
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.top-right {
+  justify-content: flex-end;
+}
+
+.top-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 2;
+  justify-content: center;
+  min-width: 0;
+}
+
+.site-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-btn:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ─── FOLDER DROPDOWN ─── */
+.dropdown-wrap {
+  position: relative;
+}
+
+.dropdown-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dropdown-chevron:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  max-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 999;
+  animation: dropIn 0.12s ease;
+}
+
+@keyframes dropIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  gap: 8px;
+  transition: background 0.1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-item:hover {
+  background: var(--bg2);
+}
+
+.dropdown-item.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dropdown-item.add-scratch {
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+  font-weight: 500;
+}
+
+.dropdown-item.add-scratch:hover {
+  background: rgba(79, 124, 255, 0.08);
+}
+
+/* ─── EDITOR ─── */
+.editor-wrap {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.editor {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  padding: 12px 14px;
+  outline: none;
+  color: var(--text);
+  background: var(--bg);
+  font-size: 14px;
+  font-family: 'Calibri', sans-serif;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+  transition: font-family 0.1s, font-size 0.1s;
+}
+
+/* Invisible scrollbar until hovered */
+.editor::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.editor::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+
+.editor:hover::-webkit-scrollbar-thumb {
+  background: var(--bg3);
+}
+
+.editor::-webkit-scrollbar-thumb:hover {
+  background: var(--text3);
+}
+
+.editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text3);
+  pointer-events: none;
+  position: absolute;
+  top: 12px;
+  left: 14px;
+}
+
+/* Images inside editor */
+.editor img {
+  max-width: 100%;
+  display: inline-block;
+  cursor: nw-resize;
+  border-radius: 4px;
+  outline: 2px solid transparent;
+  transition: outline 0.15s;
+}
+
+.editor img:hover {
+  outline-color: var(--accent);
+}
+
+.editor img.resizing {
+  outline-color: var(--accent);
+}
+
+/* ─── BOTTOM BAR ─── */
+.bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--bar-h);
+  padding: 0 8px;
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.bottom-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.fmt-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  transition: background 0.15s, color 0.15s;
+}
+
+.fmt-btn:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.fmt-btn.active {
+  background: var(--btn-hover);
+  color: var(--accent);
+}
+
+.bottom-center {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  justify-content: center;
+}
+
+.page-indicator {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  min-width: 40px;
+  text-align: center;
+}
+
+.page-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text2);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.page-nav-btn:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.add-page-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.add-page-btn:hover {
+  background: var(--btn-hover);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.bottom-right {
+  display: flex;
+  align-items: center;
+}
+
+.close-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text2);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  transition: background 0.15s, color 0.15s;
+}
+
+.close-btn:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+/* ─── SETTINGS PANEL ─── */
+.settings-panel {
+  position: absolute;
+  bottom: var(--bar-h);
+  right: 0;
+  width: 240px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  padding: 12px;
+  animation: slideUp 0.15s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.settings-header {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row:last-of-type {
+  border-bottom: none;
+}
+
+.setting-row span:first-child {
+  flex: 1;
+}
+
+.num-input {
+  width: 52px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
+  padding: 0 4px;
+  outline: none;
+}
+
+.num-input:focus {
+  border-color: var(--accent);
+}
+
+.sel-input {
+  flex: 1;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--text);
+  font-size: 12px;
+  padding: 0 4px;
+  outline: none;
+}
+
+.sel-input:focus {
+  border-color: var(--accent);
+}
+
+.unit {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.settings-close {
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  transition: background 0.15s;
+}
+
+.settings-close:hover {
+  background: var(--btn-hover);
+}
+
+/* toggle checkbox style */
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* ─── DIALOGS ─── */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+
+.dialog-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  width: 220px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+  animation: popIn 0.15s ease;
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.dialog-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.dialog-msg {
+  font-size: 12.5px;
+  color: var(--text2);
+  margin-bottom: 14px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.name-input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 10px;
+  outline: none;
+  margin-bottom: 14px;
+}
+
+.name-input:focus {
+  border-color: var(--accent);
+}
+
+.btn-secondary,
+.btn-danger,
+.btn-primary {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  transition: background 0.15s;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text2);
+}
+
+.btn-secondary:hover {
+  background: var(--btn-hover);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: transparent;
+}
+
+.btn-danger:hover {
+  background: #c42e20;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* copy flash */
+@keyframes flashGreen {
+  0% {
+    color: var(--text2);
+  }
+
+  40% {
+    color: #22c55e;
+  }
+
+  100% {
+    color: var(--text2);
+  }
+}
+
+.flash-copy {
+  animation: flashGreen 0.6s ease;
+}
