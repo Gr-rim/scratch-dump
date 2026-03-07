@@ -6,7 +6,7 @@
 ███████╗██║     ██████╔╝███████║   ██║   ██║     ███████║
 ╚════██║██║     ██╔══██╗██╔══██║   ██║   ██║     ██╔══██║
 ███████║╚██████╗██║  ██║██║  ██║   ██║   ╚██████╗██║  ██║
-╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝  ╚═╝    ╚═════╝╚═╝  ╚═╝
+╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝
                                                D U M P
 ```
 
@@ -14,8 +14,10 @@
 
 *Per-site notes. Local storage. No accounts. No cloud. No nonsense.*
 
-[![Chrome](https://img.shields.io/badge/Chrome-Manual_Install-4285F4?style=flat-square&logo=google-chrome&logoColor=white)](https://github.com)
-[![Brave](https://img.shields.io/badge/Brave-Manual_Install-FB542B?style=flat-square&logo=brave&logoColor=white)](https://github.com)
+[![Chrome](https://img.shields.io/badge/Chrome-Works-4285F4?style=flat-square&logo=google-chrome&logoColor=white)](https://github.com)
+[![Brave](https://img.shields.io/badge/Brave-Works-FB542B?style=flat-square&logo=brave&logoColor=white)](https://github.com)
+[![Edge](https://img.shields.io/badge/Edge-Works-0078D7?style=flat-square&logo=microsoft-edge&logoColor=white)](https://github.com)
+[![Opera](https://img.shields.io/badge/Opera-Works-FF1B2D?style=flat-square&logo=opera&logoColor=white)](https://github.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![100% Local](https://img.shields.io/badge/Storage-100%25_Local-green?style=flat-square)]()
 [![No Tracking](https://img.shields.io/badge/Tracking-None-red?style=flat-square)]()
@@ -63,16 +65,24 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 5. Select the `scratchpad-extension` folder
 6. Pin the ScratchDump icon to your toolbar and you're done ✓
 
-### Brave
+### Brave (and Others)
+
+Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
+
+| Browser | URL |
+|---|---|
+| Brave | `brave://extensions` |
+| Edge | `edge://extensions` |
+| Opera | `opera://extensions` |
 
 1. [Download the latest release](https://github.com/Gr-rim/scratch-dump/releases) and unzip it, **or** clone this repo
-2. Open Brave and navigate to `brave://extensions`
+2. Open your browser and navigate to the URL above, according to the browser you're using
 3. Toggle **Developer mode** on (top-right corner)
 4. Click **"Load unpacked"**
 5. Select the `scratchpad-extension` folder
 6. Pin the ScratchDump icon to your toolbar and you're done ✓
 
-> **Note:** The extension will show a "Developer mode" warning banner in Chrome — this is normal for any unpacked extension and doesn't affect functionality. Brave doesn't show this warning.
+> **Note:** Chrome and Edge will show a "Developer mode" warning banner — this is normal for any unpacked extension and doesn't affect functionality. Brave and Opera don't show this warning.
 
 > **Note:** ScratchDump will **not** work on `chrome://`, `brave://`, or other browser-internal pages. This is a browser security restriction that applies to all extensions.
 
@@ -131,6 +141,8 @@ scratchpad-extension/
 ## Roadmap
 
 - [ ] Export notes as `.md` or `.txt`
+- [ ] Dictated notes (Voice-to-notes)
+- [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
 - [ ] Optional sync via browser account (opt-in)
