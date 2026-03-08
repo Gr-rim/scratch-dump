@@ -123,20 +123,20 @@ function pushUndoState(html) {
   updateUndoButtons();
 }
 
-function undo() {
+async function undo() {
   const state = getUndoState();
   if (state.pointer <= 0) return;
   state.pointer--;
-  setEditorHTML(state.stack[state.pointer], false);
+  await setEditorHTML(state.stack[state.pointer], false);
   updateUndoButtons();
   saveCurrentPage();
 }
 
-function redo() {
+async function redo() {
   const state = getUndoState();
   if (state.pointer >= state.stack.length - 1) return;
   state.pointer++;
-  setEditorHTML(state.stack[state.pointer], false);
+  await setEditorHTML(state.stack[state.pointer], false);
   updateUndoButtons();
   saveCurrentPage();
 }
@@ -145,6 +145,24 @@ function updateUndoButtons() {
   const state = getUndoState();
   undoBtn.disabled = state.pointer <= 0;
   redoBtn.disabled = state.pointer >= state.stack.length - 1;
+}
+
+// ─── IMAGE COMPRESSION ───────────────────────────────────────────────────────
+// Resize + JPEG-compress pasted images to reduce storage footprint.
+// Typical savings: 70-80% for screenshots.
+function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(1, maxWidth / img.width);
+      canvas.width  = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+  });
 }
 
 // ─── EDITOR ──────────────────────────────────────────────────────────────────
@@ -193,8 +211,10 @@ function sanitizeNode(node) {
   }
 }
 
-function setEditorHTML(html, pushToStack = true) {
-  editor.innerHTML = sanitizeHTML(html || '');
+async function setEditorHTML(html, pushToStack = true) {
+  // Resolve idb:<hash> image refs back to data URLs for display
+  const resolved = await resolveIDBImages(html || '');
+  editor.innerHTML = sanitizeHTML(resolved);
   if (pushToStack) pushUndoState(editor.innerHTML);
   lastHTML = editor.innerHTML;
   attachImageResizers();
@@ -205,7 +225,8 @@ function saveCurrentPage() {
   saveTimer = setTimeout(async () => {
     const fd = await getFolderData(currentFolderKey);
     while (fd.pages.length <= currentPageIdx) fd.pages.push('');
-    fd.pages[currentPageIdx] = editor.innerHTML;
+    // Extract base64 images into IndexedDB, store only idb:<hash> refs
+    fd.pages[currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
     await saveFolderData(currentFolderKey, fd);
   }, 300);
 }
@@ -240,14 +261,16 @@ editor.addEventListener('paste', async (e) => {
       if (!file) continue;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const img = document.createElement('img');
-        img.src = ev.target.result;
-        img.style.width = '200px';
-        img.style.height = 'auto';
-        insertNodeAtCursor(img);
-        attachResizer(img);
-        pushUndoState(editor.innerHTML);
-        saveCurrentPage();
+        compressImage(ev.target.result).then(compressed => {
+          const img = document.createElement('img');
+          img.src = compressed;
+          img.style.width = '200px';
+          img.style.height = 'auto';
+          insertNodeAtCursor(img);
+          attachResizer(img);
+          pushUndoState(editor.innerHTML);
+          saveCurrentPage();
+        });
       };
       reader.readAsDataURL(file);
       handled = true;
@@ -462,7 +485,7 @@ async function loadFolder(folderKey) {
   folderCache = { key: '', data: null };
   undoStacks[folderKey] = undoStacks[folderKey] || {};
   const fd = await getFolderData(folderKey);
-  setEditorHTML(fd.pages[0] || '');
+  await setEditorHTML(fd.pages[0] || '');
   updatePageUI(fd);
   updateUndoButtons();
   editor.focus();
@@ -473,7 +496,7 @@ async function loadPage(idx) {
   await flushSave();
   const fd = await getFolderData(currentFolderKey);
   currentPageIdx = idx;
-  setEditorHTML(fd.pages[idx] || '');
+  await setEditorHTML(fd.pages[idx] || '');
   updatePageUI(fd);
   updateUndoButtons();
   editor.focus();
@@ -483,7 +506,8 @@ async function flushSave() {
   clearTimeout(saveTimer);
   const fd = await getFolderData(currentFolderKey);
   while (fd.pages.length <= currentPageIdx) fd.pages.push('');
-  fd.pages[currentPageIdx] = editor.innerHTML;
+  // Extract base64 images into IndexedDB, store only idb:<hash> refs
+  fd.pages[currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
   await saveFolderData(currentFolderKey, fd);
 }
 
@@ -508,7 +532,7 @@ addPageBtn.addEventListener('click', async () => {
   fd.pages.push('');
   await saveFolderData(currentFolderKey, fd);
   currentPageIdx = fd.pages.length - 1;
-  setEditorHTML('');
+  await setEditorHTML('');
   updatePageUI(fd);
   updateUndoButtons();
   editor.focus();
@@ -806,8 +830,86 @@ function applySettings() {
   }
 }
 
+// ─── MIGRATION v1 → v2 ───────────────────────────────────────────────────────
+// Extract inline base64 images from chrome.storage.local into IndexedDB.
+// Uses granular _migrationStatus for crash-safe resume.
+async function migrateV1toV2() {
+  // Mark in-progress so a crash mid-migration will resume on next load
+  await storageSet({ _migrationStatus: 'in_progress' });
+
+  const allData = await new Promise(r => chrome.storage.local.get(null, r));
+  let migrated = 0;
+
+  for (const [key, val] of Object.entries(allData)) {
+    if (!key.startsWith('site:') && !key.startsWith('scratch:')) continue;
+    if (!val || !val.pages) continue;
+
+    let changed = false;
+    for (let i = 0; i < val.pages.length; i++) {
+      const page = val.pages[i];
+      if (!page || !page.includes('data:image')) continue;
+      val.pages[i] = await extractImagesToIDB(page);
+      changed = true;
+    }
+    if (changed) {
+      await storageSet({ [key]: val });
+      migrated++;
+    }
+  }
+
+  // Verify: spot-check that idb refs resolve
+  let verified = true;
+  for (const [key, val] of Object.entries(allData)) {
+    if (!key.startsWith('site:') && !key.startsWith('scratch:')) continue;
+    if (!val || !val.pages) continue;
+    for (const page of val.pages) {
+      // Match idb:<uuid> refs (UUID v4 format)
+      const idbRefs = (page || '').match(/idb:[0-9a-f-]{36}/g) || [];
+      for (const ref of idbRefs.slice(0, 2)) {
+        const id = ref.slice(4);
+        if (!(await imgStoreHas(id))) { verified = false; break; }
+      }
+      if (!verified) break;
+    }
+    if (!verified) break;
+  }
+
+  if (verified) {
+    await storageSet({
+      _schemaVersion: 2,
+      _migrationStatus: 'complete',
+      _migratedAt: Date.now()
+    });
+    console.log(`ScratchDump: migration v1→v2 complete (${migrated} folders updated)`);
+  } else {
+    await storageSet({ _migrationStatus: 'failed' });
+    console.warn('ScratchDump: migration v1→v2 verification failed — will retry next load');
+  }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 (async function init() {
+  // Ensure schema version exists
+  const meta = await storageGet(['_schemaVersion', '_migrationStatus']);
+  if (!meta._schemaVersion) {
+    await storageSet({ _schemaVersion: 1, _migrationStatus: 'pending' });
+  }
+
+  // Try to initialise IndexedDB — if it fails (incognito, storage pressure),
+  // images stay as compressed base64 in chrome.storage.local.
+  await initImageStore();
+
+  // Run pending migrations (only if IndexedDB is available)
+  const status = meta._migrationStatus || 'pending';
+  if (idbAvailable && (meta._schemaVersion || 1) < 2 && status !== 'complete') {
+    try {
+      await migrateV1toV2();
+    } catch (e) {
+      await storageSet({ _migrationStatus: 'failed' });
+      console.warn('ScratchDump: migration error', e);
+    }
+  }
+
   await loadSettings();
   updateUndoButtons();
 })();

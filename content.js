@@ -137,11 +137,13 @@
 
   function sendHostname() {
     if (panelIframe && panelIframe.contentWindow) {
-      panelIframe.contentWindow.postMessage({
-        source: 'scratchpad-host',
-        type: 'hostname',
-        payload: window.location.hostname
-      }, extOrigin);
+      try {
+        panelIframe.contentWindow.postMessage({
+          source: 'scratchpad-host',
+          type: 'hostname',
+          payload: window.location.hostname
+        }, extOrigin);
+      } catch { /* iframe not yet navigated to extension origin — retry will succeed */ }
     }
   }
 
