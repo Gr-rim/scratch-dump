@@ -41,6 +41,9 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 🗂️ **Cross-site dropdown** — see and access notes from any site you've written on, from anywhere
 - 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...)
 - 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
+- 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
+- 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap)
+- 🔄 **Safe migration** — existing notes are automatically migrated with verify-before-commit safety
 - ↩️ **Per-page undo/redo** — full history stack, Ctrl+Z / Ctrl+Y
 - 🎨 **Dark & Light themes** — dark by default (ofc)
 - 🔡 **Font & text size controls** — Calibri, Arial, Helvetica, Roboto
@@ -48,7 +51,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 👁️ **Opacity control** — 40%–100%, blend it into your workflow
 - 📋 **Copy & Paste buttons** — copy selection or entire page in one click
 - ↔️ **Resizable window** — drag the bottom-left corner
-- 💾 **100% local** — `chrome.storage.local`, never leaves your machine
+- 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
 
 ---
 
@@ -62,7 +65,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 2. Open Chrome and navigate to `chrome://extensions` 
 3. Toggle **Developer mode** on (top-right corner)
 4. Click **"Load unpacked"**
-5. Select the `scratchpad-extension` folder
+5. Select the `scratch-dump` folder (the one containing `manifest.json`)
 6. Pin the ScratchDump icon to your toolbar and you're done ✓
 
 ### Brave (and Others)
@@ -79,7 +82,7 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 2. Open your browser and navigate to the URL above, according to the browser you're using
 3. Toggle **Developer mode** on (top-right corner)
 4. Click **"Load unpacked"**
-5. Select the `scratchpad-extension` folder
+5. Select the `scratch-dump` folder (the one containing `manifest.json`)
 6. Pin the ScratchDump icon to your toolbar and you're done ✓
 
 > **Note:** Chrome and Edge will show a "Developer mode" warning banner — this is normal for any unpacked extension and doesn't affect functionality. Brave and Opera don't show this warning.
@@ -109,7 +112,8 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 
 ## Privacy
 
-ScratchDump stores everything exclusively in `chrome.storage.local` (for now, next update will give you custom storage location). 
+ScratchDump stores notes and metadata in `chrome.storage.local` and image blobs in IndexedDB. Both are browser-local storage mechanisms.
+
 This means:
 
 - ✅ Data never leaves your device
@@ -119,22 +123,49 @@ This means:
 
 ---
 
-## File Structure
+## Architecture
+
+### Storage
+
+| Store | Contents | Limit |
+|---|---|---|
+| `chrome.storage.local` | Note text (with `idb:<uuid>` image refs), folder metadata, settings, schema version | ~10 MB |
+| IndexedDB (`ScratchDumpImages`) | Image blobs keyed by UUID v4 | Browser-managed (typically GBs) |
+
+Images are automatically compressed on paste (max 800px width, JPEG 0.7 quality) before storage. If IndexedDB is unavailable (e.g. incognito mode), images fall back to compressed base64 inline in `chrome.storage.local`.
+
+### Schema Versioning
+
+The extension tracks `_schemaVersion` and `_migrationStatus` in `chrome.storage.local`. On update, migrations run automatically with crash-safe state tracking (`pending` → `in_progress` → `complete`/`failed`).
+
+### File Structure
 
 ```
-scratchpad-extension/
-├── manifest.json      # Extension config (Manifest V3)
-├── background.js      # Service worker — handles toolbar icon click
-├── content.js         # Injected into pages — creates & manages the panel
-├── content.css        # Minimal host-page styles
-├── panel.html         # The scratchpad UI
-├── panel.css          # All panel styles + theming
-├── panel.js           # All panel logic (notes, folders, pages, settings)
+scratch-dump/
+├── manifest.json               # Extension config (Manifest V3)
+├── backend/
+│   ├── background.js           # Service worker — toolbar icon click handler
+│   ├── content.js              # Injected into pages — creates & manages the panel iframe
+│   └── content.css             # Minimal host-page styles for the panel container
+├── frontend/
+│   ├── panel.html              # Panel UI entry point
+│   ├── panel.css               # All panel styles + dark/light theming
+│   ├── state.js                # ScratchDump namespace — all shared state
+│   ├── imageStore.js           # IndexedDB wrapper for image blob storage
+│   ├── noteStorage.js          # chrome.storage CRUD, scratch list, migration
+│   ├── settings.js             # Settings persistence + application
+│   ├── historyManager.js       # Per-page undo/redo stack (pure data structure)
+│   └── panel.js                # UI coordinator — DOM events, editor, wiring
 └── icons/
     ├── icon16.png
     ├── icon48.png
     └── icon128.png
 ```
+
+**Load order** (in `panel.html`):
+`state.js` → `imageStore.js` → `noteStorage.js` → `settings.js` → `historyManager.js` → `panel.js`
+
+All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build and dependency-free.
 
 ---
 
