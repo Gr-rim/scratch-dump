@@ -9,7 +9,8 @@
     "tabs",
     "scripting",
     "clipboardRead",
-    "clipboardWrite"
+    "clipboardWrite",
+    "unlimitedStorage"
   ],
   "action": {
     "default_icon": {

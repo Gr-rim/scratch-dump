@@ -127,10 +127,10 @@ This means:
 
 ### Storage
 
-| Store | Contents | Limit |
-|---|---|---|
-| `chrome.storage.local` | Note text (with `idb:<uuid>` image refs), folder metadata, settings, schema version | ~10 MB |
-| IndexedDB (`ScratchDumpImages`) | Image blobs keyed by UUID v4 | Browser-managed (typically GBs) |
+| Store | Contents |
+|---|---|
+| `chrome.storage.local` | Note text (with `idb:<uuid>` image refs), folder metadata, settings, schema version |
+| IndexedDB (`ScratchDumpImages`) | Image blobs keyed by UUID v4 |
 
 Images are automatically compressed on paste (max 800px width, JPEG 0.7 quality) before storage. If IndexedDB is unavailable (e.g. incognito mode), images fall back to compressed base64 inline in `chrome.storage.local`.
 
