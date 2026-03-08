@@ -1,155 +1,69 @@
-// panel.js
+// panel.js — UI coordinator for ScratchDump
+// Wires DOM events to extracted modules: noteStorage, settings, historyManager, imageStore.
+// All shared state lives in ScratchDump.* (state.js).
 'use strict';
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-let hostname = '';
-let currentFolderKey = ''; // e.g. "site:claude.ai" or "scratch:MyNotes"
-let currentPageIdx = 0;    // 0-based
-let settings = {
-  fixedSize: false,
-  opacity: 100,
-  textSize: 14,
-  font: 'Calibri',
-  theme: 'dark'
-};
+// ─── DOM REFS ────────────────────────────────────────────────────────────────
+const editor         = document.getElementById('editor');
+const undoBtn        = document.getElementById('undoBtn');
+const redoBtn        = document.getElementById('redoBtn');
+const siteName       = document.getElementById('siteName');
+const folderChevron  = document.getElementById('folderChevron');
+const folderMenu     = document.getElementById('folderMenu');
+const copyBtn        = document.getElementById('copyBtn');
+const pasteBtn       = document.getElementById('pasteBtn');
+const settingsBtn    = document.getElementById('settingsBtn');
+const settingsPanel  = document.getElementById('settingsPanel');
+const closeBtn       = document.getElementById('closeBtn');
+const addPageBtn     = document.getElementById('addPageBtn');
+const pageIndicator  = document.getElementById('pageIndicator');
+const prevPageBtn    = document.getElementById('prevPageBtn');
+const nextPageBtn    = document.getElementById('nextPageBtn');
+const boldBtn        = document.getElementById('boldBtn');
+const underlineBtn   = document.getElementById('underlineBtn');
+const italicBtn      = document.getElementById('italicBtn');
+const fszUp          = document.getElementById('fszUp');
+const fszDown        = document.getElementById('fszDown');
+const confirmDialog  = document.getElementById('confirmDialog');
+const confirmOk      = document.getElementById('confirmOk');
+const confirmCancel  = document.getElementById('confirmCancel');
+const nameDialog     = document.getElementById('nameDialog');
+const nameInput      = document.getElementById('nameInput');
+const nameOk         = document.getElementById('nameOk');
+const nameCancel     = document.getElementById('nameCancel');
+const closeSettings  = document.getElementById('closeSettings');
 
-// Per-page undo/redo stacks  { [folderKey]: { [pageIdx]: { stack, pointer } } }
-let undoStacks = {};
-
-// In-memory cache for current folder data to avoid redundant storage reads
-let folderCache = { key: '', data: null };
-
-// ─── DOM ─────────────────────────────────────────────────────────────────────
-const editor = document.getElementById('editor');
-const undoBtn = document.getElementById('undoBtn');
-const redoBtn = document.getElementById('redoBtn');
-const siteName = document.getElementById('siteName');
-const folderChevron = document.getElementById('folderChevron');
-const folderMenu = document.getElementById('folderMenu');
-const copyBtn = document.getElementById('copyBtn');
-const pasteBtn = document.getElementById('pasteBtn');
-const settingsBtn = document.getElementById('settingsBtn');
-const settingsPanel = document.getElementById('settingsPanel');
-const closeBtn = document.getElementById('closeBtn');
-const addPageBtn = document.getElementById('addPageBtn');
-const pageIndicator = document.getElementById('pageIndicator');
-const prevPageBtn = document.getElementById('prevPageBtn');
-const nextPageBtn = document.getElementById('nextPageBtn');
-const boldBtn = document.getElementById('boldBtn');
-const underlineBtn = document.getElementById('underlineBtn');
-const italicBtn = document.getElementById('italicBtn');
-const fszUp = document.getElementById('fszUp');
-const fszDown = document.getElementById('fszDown');
-const confirmDialog = document.getElementById('confirmDialog');
-const confirmOk = document.getElementById('confirmOk');
-const confirmCancel = document.getElementById('confirmCancel');
-const nameDialog = document.getElementById('nameDialog');
-const nameInput = document.getElementById('nameInput');
-const nameOk = document.getElementById('nameOk');
-const nameCancel = document.getElementById('nameCancel');
-const fixedSizeCheck = document.getElementById('fixedSizeCheck');
-const opacityInput = document.getElementById('opacityInput');
-const textSizeInput = document.getElementById('textSizeInput');
-const fontSelect = document.getElementById('fontSelect');
-const themeSelect = document.getElementById('themeSelect');
-const closeSettings = document.getElementById('closeSettings');
-
-// ─── STORAGE HELPERS ─────────────────────────────────────────────────────────
-function storageGet(keys) {
-  return new Promise(resolve => chrome.storage.local.get(keys, resolve));
-}
-function storageSet(obj) {
-  return new Promise(resolve => chrome.storage.local.set(obj, resolve));
-}
-
-// Folder data shape: { pages: [htmlString, ...] }
-async function getFolderData(folderKey) {
-  if (folderCache.key === folderKey && folderCache.data) {
-    return folderCache.data;
-  }
-  const data = await storageGet([folderKey]);
-  const fd = data[folderKey] || { pages: [''] };
-  folderCache = { key: folderKey, data: fd };
-  return fd;
-}
-async function saveFolderData(folderKey, folderData) {
-  folderCache = { key: folderKey, data: folderData };
-  await storageSet({ [folderKey]: folderData });
-}
-
-// Scratch list: [{ key, name }]
-async function getScratchList() {
-  const data = await storageGet(['__scratchList__']);
-  return data['__scratchList__'] || [];
-}
-async function saveScratchList(list) {
-  await storageSet({ '__scratchList__': list });
-}
-
-// Settings
-async function loadSettings() {
-  const data = await storageGet(['__settings__']);
-  if (data['__settings__']) {
-    settings = { ...settings, ...data['__settings__'] };
-  }
-  applySettings();
-}
-async function saveSettings() {
-  await storageSet({ '__settings__': settings });
-}
-
-// ─── UNDO/REDO ───────────────────────────────────────────────────────────────
-function getUndoState() {
-  if (!undoStacks[currentFolderKey]) undoStacks[currentFolderKey] = {};
-  if (!undoStacks[currentFolderKey][currentPageIdx]) {
-    undoStacks[currentFolderKey][currentPageIdx] = { stack: [], pointer: -1 };
-  }
-  return undoStacks[currentFolderKey][currentPageIdx];
-}
-
-const UNDO_LIMIT = 50;
+// ─── UNDO/REDO WIRING ───────────────────────────────────────────────────────
 
 function pushUndoState(html) {
-  const state = getUndoState();
-  // Truncate any forward history
-  state.stack = state.stack.slice(0, state.pointer + 1);
-  state.stack.push(html);
-  // Trim oldest entries if over the limit
-  if (state.stack.length > UNDO_LIMIT) {
-    const excess = state.stack.length - UNDO_LIMIT;
-    state.stack = state.stack.slice(excess);
-  }
-  state.pointer = state.stack.length - 1;
+  History.push(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx, html);
   updateUndoButtons();
 }
 
 async function undo() {
-  const state = getUndoState();
-  if (state.pointer <= 0) return;
-  state.pointer--;
-  await setEditorHTML(state.stack[state.pointer], false);
+  const snapshot = History.undo(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx);
+  if (snapshot === null) return;
+  await setEditorHTML(snapshot, false);
   updateUndoButtons();
   saveCurrentPage();
 }
 
 async function redo() {
-  const state = getUndoState();
-  if (state.pointer >= state.stack.length - 1) return;
-  state.pointer++;
-  await setEditorHTML(state.stack[state.pointer], false);
+  const snapshot = History.redo(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx);
+  if (snapshot === null) return;
+  await setEditorHTML(snapshot, false);
   updateUndoButtons();
   saveCurrentPage();
 }
 
 function updateUndoButtons() {
-  const state = getUndoState();
-  undoBtn.disabled = state.pointer <= 0;
-  redoBtn.disabled = state.pointer >= state.stack.length - 1;
+  const fk = ScratchDump.currentFolderKey;
+  const pi = ScratchDump.currentPageIdx;
+  undoBtn.disabled = !History.canUndo(fk, pi);
+  redoBtn.disabled = !History.canRedo(fk, pi);
 }
 
-// ─── IMAGE COMPRESSION ───────────────────────────────────────────────────────
-// Resize + JPEG-compress pasted images to reduce storage footprint.
-// Typical savings: 70-80% for screenshots.
+// ─── IMAGE COMPRESSION ──────────────────────────────────────────────────────
 function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -167,18 +81,18 @@ function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
 
 // ─── EDITOR ──────────────────────────────────────────────────────────────────
 let saveTimer = null;
-let lastHTML = '';
+let lastHTML  = '';
 
-// Sanitize HTML to prevent stored XSS — strips dangerous tags and attributes
+// Sanitize HTML to prevent stored XSS
 const SAFE_TAGS = new Set([
-  'div', 'span', 'p', 'br', 'b', 'strong', 'i', 'em', 'u', 'sub', 'sup',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
-  'ul', 'ol', 'li', 'a', 'img', 'hr', 'font', 'table', 'thead',
-  'tbody', 'tr', 'td', 'th',
+  'div','span','p','br','b','strong','i','em','u','sub','sup',
+  'h1','h2','h3','h4','h5','h6','blockquote','pre','code',
+  'ul','ol','li','a','img','hr','font','table','thead',
+  'tbody','tr','td','th',
 ]);
 const SAFE_ATTRS = new Set([
-  'style', 'class', 'src', 'href', 'alt', 'title', 'width', 'height',
-  'colspan', 'rowspan', 'target', 'data-placeholder',
+  'style','class','src','href','alt','title','width','height',
+  'colspan','rowspan','target','data-placeholder',
 ]);
 
 function sanitizeHTML(html) {
@@ -188,15 +102,10 @@ function sanitizeHTML(html) {
 }
 
 function sanitizeNode(node) {
-  const children = Array.from(node.childNodes);
-  for (const child of children) {
+  for (const child of Array.from(node.childNodes)) {
     if (child.nodeType === Node.ELEMENT_NODE) {
       const tag = child.tagName.toLowerCase();
-      if (!SAFE_TAGS.has(tag)) {
-        child.remove();
-        continue;
-      }
-      // Strip dangerous attributes (event handlers, javascript: URIs)
+      if (!SAFE_TAGS.has(tag)) { child.remove(); continue; }
       for (const attr of Array.from(child.attributes)) {
         const name = attr.name.toLowerCase();
         if (name.startsWith('on') || !SAFE_ATTRS.has(name)) {
@@ -212,7 +121,6 @@ function sanitizeNode(node) {
 }
 
 async function setEditorHTML(html, pushToStack = true) {
-  // Resolve idb:<hash> image refs back to data URLs for display
   const resolved = await resolveIDBImages(html || '');
   editor.innerHTML = sanitizeHTML(resolved);
   if (pushToStack) pushUndoState(editor.innerHTML);
@@ -223,13 +131,22 @@ async function setEditorHTML(html, pushToStack = true) {
 function saveCurrentPage() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    const fd = await getFolderData(currentFolderKey);
-    while (fd.pages.length <= currentPageIdx) fd.pages.push('');
-    // Extract base64 images into IndexedDB, store only idb:<hash> refs
-    fd.pages[currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
-    await saveFolderData(currentFolderKey, fd);
+    const fd = await getFolderData(ScratchDump.currentFolderKey);
+    while (fd.pages.length <= ScratchDump.currentPageIdx) fd.pages.push('');
+    fd.pages[ScratchDump.currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
+    await saveFolderData(ScratchDump.currentFolderKey, fd);
   }, 300);
 }
+
+async function flushSave() {
+  clearTimeout(saveTimer);
+  const fd = await getFolderData(ScratchDump.currentFolderKey);
+  while (fd.pages.length <= ScratchDump.currentPageIdx) fd.pages.push('');
+  fd.pages[ScratchDump.currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
+  await saveFolderData(ScratchDump.currentFolderKey, fd);
+}
+
+// ─── EDITOR EVENTS ───────────────────────────────────────────────────────────
 
 editor.addEventListener('input', () => {
   const html = editor.innerHTML;
@@ -240,7 +157,6 @@ editor.addEventListener('input', () => {
   }
 });
 
-// Keyboard shortcuts
 editor.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
     e.preventDefault(); undo();
@@ -284,6 +200,8 @@ editor.addEventListener('paste', async (e) => {
   }
 });
 
+// ─── CURSOR / TEXT HELPERS ───────────────────────────────────────────────────
+
 function insertNodeAtCursor(node) {
   const sel = window.getSelection();
   if (sel.rangeCount) {
@@ -299,7 +217,6 @@ function insertNodeAtCursor(node) {
   }
 }
 
-// ─── TEXT HELPERS (replaces deprecated execCommand) ─────────────────────────
 function insertTextAtCursor(text) {
   const sel = window.getSelection();
   if (!sel.rangeCount) return;
@@ -317,32 +234,23 @@ function toggleFormat(tagName) {
   const sel = window.getSelection();
   if (!sel.rangeCount) return;
 
-  // Check if cursor/selection is already inside this tag
   let node = sel.anchorNode;
   let existing = null;
   while (node && node !== editor) {
     if (node.nodeType === 1 && node.tagName.toLowerCase() === tagName) {
-      existing = node;
-      break;
+      existing = node; break;
     }
     node = node.parentNode;
   }
 
   if (existing) {
-    // Unwrap: replace the tag with its children
     const parent = existing.parentNode;
-    while (existing.firstChild) {
-      parent.insertBefore(existing.firstChild, existing);
-    }
+    while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
     parent.removeChild(existing);
   } else if (!sel.isCollapsed) {
-    // Wrap selection in the formatting tag
     const range = sel.getRangeAt(0);
     const wrapper = document.createElement(tagName);
-    try {
-      range.surroundContents(wrapper);
-    } catch {
-      // surroundContents fails on partial element selections — extract and re-wrap
+    try { range.surroundContents(wrapper); } catch {
       const fragment = range.extractContents();
       wrapper.appendChild(fragment);
       range.insertNode(wrapper);
@@ -367,7 +275,8 @@ function hasFormat(tagName) {
   return false;
 }
 
-// ─── IMAGE RESIZING ───────────────────────────────────────────────────────────
+// ─── IMAGE RESIZING ──────────────────────────────────────────────────────────
+
 function attachImageResizers() {
   editor.querySelectorAll('img').forEach(img => attachResizer(img));
 }
@@ -375,14 +284,12 @@ function attachImageResizers() {
 function attachResizer(img) {
   if (img._resizerAttached) return;
   img._resizerAttached = true;
-  // Cursor hint for right-edge resize zone
   img.addEventListener('mousemove', (e) => {
     const rect = img.getBoundingClientRect();
     img.style.cursor = e.clientX >= rect.left + rect.width * 0.65 ? 'ew-resize' : '';
   });
 }
 
-// Single document-level listener handles all image resizing — no per-mousedown leaks
 (function setupImageResize() {
   let isResizing = false;
   let resizeImg = null;
@@ -403,11 +310,9 @@ function attachResizer(img) {
 
   document.addEventListener('mousemove', (e) => {
     if (!isResizing || !resizeImg) return;
-    // Guard: if the image was removed from DOM mid-resize, abort
     if (!editor.contains(resizeImg)) { cleanup(); return; }
     const dx = e.clientX - startX;
-    const newW = Math.max(40, startW + dx);
-    resizeImg.style.width = newW + 'px';
+    resizeImg.style.width = Math.max(40, startW + dx) + 'px';
   });
 
   document.addEventListener('mouseup', () => {
@@ -428,9 +333,9 @@ function attachResizer(img) {
   }
 })();
 
-// ─── HOSTNAME / FOLDER INIT ───────────────────────────────────────────────────
+// ─── HOSTNAME / FOLDER INIT ─────────────────────────────────────────────────
+
 function prettyName(host) {
-  // Remove www. prefix, then extract the main domain word
   host = host.replace(/^www\./, '');
   const parts = host.split('.');
   if (parts.length >= 2) {
@@ -445,45 +350,37 @@ function truncate(str, max = 14) {
 }
 
 async function initWithHostname(host) {
-  _hostnameReceived = true;
-  clearInterval(_hostnameRetry);
-  hostname = host;
-  currentFolderKey = 'site:' + host;
+  ScratchDump.hostnameReceived = true;
+  clearInterval(ScratchDump.hostnameRetry);
+  ScratchDump.hostname = host;
+  ScratchDump.currentFolderKey = 'site:' + host;
   const display = host ? truncate(prettyName(host)) : 'Scratchpad';
   siteName.textContent = display;
-  await loadFolder(currentFolderKey);
-  // Now that the link is established, send deferred settings
-  window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: settings.opacity }, '*');
-  window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: settings.fixedSize }, '*');
+  await loadFolder(ScratchDump.currentFolderKey);
+  const s = ScratchDump.settings;
+  window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: s.opacity }, '*');
+  window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: s.fixedSize }, '*');
 }
 
 window.addEventListener('message', (e) => {
-  // Security: validate message structure (origin can't be checked here —
-  // content script messages arrive with the host page's origin, which varies).
-  // The content script side validates e.origin === extOrigin for messages FROM this iframe.
   if (!e.data || e.data.source !== 'scratchpad-host') return;
-  if (e.data.type === 'hostname') {
-    initWithHostname(e.data.payload);
-  }
+  if (e.data.type === 'hostname') initWithHostname(e.data.payload);
 });
 
-// Request hostname — retry until we get a response
-let _hostnameReceived = false;
 function requestHostname() {
-  if (_hostnameReceived) return;
+  if (ScratchDump.hostnameReceived) return;
   window.parent.postMessage({ source: 'scratchpad', type: 'getHostname' }, '*');
 }
-// Fire immediately and keep retrying until answered
 requestHostname();
-const _hostnameRetry = setInterval(requestHostname, 300);
+ScratchDump.hostnameRetry = setInterval(requestHostname, 300);
 
-// ─── LOAD FOLDER ─────────────────────────────────────────────────────────────
+// ─── LOAD FOLDER / PAGE ─────────────────────────────────────────────────────
+
 async function loadFolder(folderKey) {
-  currentFolderKey = folderKey;
-  currentPageIdx = 0;
-  // Invalidate cache so we get fresh data
-  folderCache = { key: '', data: null };
-  undoStacks[folderKey] = undoStacks[folderKey] || {};
+  ScratchDump.currentFolderKey = folderKey;
+  ScratchDump.currentPageIdx = 0;
+  ScratchDump.folderCache = { key: '', data: null };
+  History.ensureFolder(folderKey);
   const fd = await getFolderData(folderKey);
   await setEditorHTML(fd.pages[0] || '');
   updatePageUI(fd);
@@ -492,46 +389,39 @@ async function loadFolder(folderKey) {
 }
 
 async function loadPage(idx) {
-  // Save current first
   await flushSave();
-  const fd = await getFolderData(currentFolderKey);
-  currentPageIdx = idx;
+  const fd = await getFolderData(ScratchDump.currentFolderKey);
+  ScratchDump.currentPageIdx = idx;
   await setEditorHTML(fd.pages[idx] || '');
   updatePageUI(fd);
   updateUndoButtons();
   editor.focus();
 }
 
-async function flushSave() {
-  clearTimeout(saveTimer);
-  const fd = await getFolderData(currentFolderKey);
-  while (fd.pages.length <= currentPageIdx) fd.pages.push('');
-  // Extract base64 images into IndexedDB, store only idb:<hash> refs
-  fd.pages[currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
-  await saveFolderData(currentFolderKey, fd);
-}
-
 function updatePageUI(fd) {
   const total = fd.pages.length;
-  pageIndicator.textContent = `Pg. ${currentPageIdx + 1}`;
-  prevPageBtn.classList.toggle('hidden', currentPageIdx === 0);
-  nextPageBtn.classList.toggle('hidden', currentPageIdx >= total - 1);
+  pageIndicator.textContent = `Pg. ${ScratchDump.currentPageIdx + 1}`;
+  prevPageBtn.classList.toggle('hidden', ScratchDump.currentPageIdx === 0);
+  nextPageBtn.classList.toggle('hidden', ScratchDump.currentPageIdx >= total - 1);
 }
 
 // ─── PAGE NAVIGATION ─────────────────────────────────────────────────────────
+
 prevPageBtn.addEventListener('click', () => {
-  if (currentPageIdx > 0) loadPage(currentPageIdx - 1);
+  if (ScratchDump.currentPageIdx > 0) loadPage(ScratchDump.currentPageIdx - 1);
 });
+
 nextPageBtn.addEventListener('click', async () => {
-  const fd = await getFolderData(currentFolderKey);
-  if (currentPageIdx < fd.pages.length - 1) loadPage(currentPageIdx + 1);
+  const fd = await getFolderData(ScratchDump.currentFolderKey);
+  if (ScratchDump.currentPageIdx < fd.pages.length - 1) loadPage(ScratchDump.currentPageIdx + 1);
 });
+
 addPageBtn.addEventListener('click', async () => {
   await flushSave();
-  const fd = await getFolderData(currentFolderKey);
+  const fd = await getFolderData(ScratchDump.currentFolderKey);
   fd.pages.push('');
-  await saveFolderData(currentFolderKey, fd);
-  currentPageIdx = fd.pages.length - 1;
+  await saveFolderData(ScratchDump.currentFolderKey, fd);
+  ScratchDump.currentPageIdx = fd.pages.length - 1;
   await setEditorHTML('');
   updatePageUI(fd);
   updateUndoButtons();
@@ -539,6 +429,7 @@ addPageBtn.addEventListener('click', async () => {
 });
 
 // ─── FOLDER DROPDOWN ─────────────────────────────────────────────────────────
+
 folderChevron.addEventListener('click', async (e) => {
   e.stopPropagation();
   const isOpen = !folderMenu.classList.contains('hidden');
@@ -548,9 +439,7 @@ folderChevron.addEventListener('click', async (e) => {
 });
 
 document.addEventListener('click', (e) => {
-  if (!e.target.closest('#folderDropdownWrap')) {
-    folderMenu.classList.add('hidden');
-  }
+  if (!e.target.closest('#folderDropdownWrap')) folderMenu.classList.add('hidden');
   if (!e.target.closest('#settingsPanel') && !e.target.closest('#settingsBtn')) {
     settingsPanel.classList.add('hidden');
   }
@@ -559,58 +448,42 @@ document.addEventListener('click', (e) => {
 async function renderFolderMenu() {
   folderMenu.innerHTML = '';
   const scratchList = await getScratchList();
+  const allKeys = await getAllStorageData();
+  const currentSiteKey = ScratchDump.hostname ? 'site:' + ScratchDump.hostname : null;
 
-  // Get all storage keys to find every saved site
-  const allKeys = await new Promise(resolve => chrome.storage.local.get(null, resolve));
-  const currentSiteKey = hostname ? 'site:' + hostname : null;
-
-  // Collect all site keys that have at least one non-empty page
   const siteEntries = [];
   for (const [key, val] of Object.entries(allKeys)) {
     if (!key.startsWith('site:')) continue;
     const hasContent = val && val.pages && val.pages.some(p => p && p.trim() !== '' && p !== '<br>');
-    if (!hasContent && key !== currentSiteKey) continue; // skip empty non-current sites
-    const host = key.slice(5); // strip "site:"
-    siteEntries.push({ key, host });
+    if (!hasContent && key !== currentSiteKey) continue;
+    siteEntries.push({ key, host: key.slice(5) });
   }
 
-  // Always include current site even if empty
   if (currentSiteKey && !siteEntries.find(s => s.key === currentSiteKey)) {
-    siteEntries.unshift({ key: currentSiteKey, host: hostname });
+    siteEntries.unshift({ key: currentSiteKey, host: ScratchDump.hostname });
   }
 
-  // Sort: current site first, then alphabetically
   siteEntries.sort((a, b) => {
     if (a.key === currentSiteKey) return -1;
     if (b.key === currentSiteKey) return 1;
     return a.host.localeCompare(b.host);
   });
 
-  // Render site entries
   siteEntries.forEach(({ key, host }) => {
     const label = prettyName(host);
-    const el = menuItem(label, key === currentFolderKey, () => {
-      switchFolder(key, label);
-    });
-    // Show hostname as subtitle if different from pretty name
-    if (host !== label.toLowerCase()) {
-      el.title = host;
-    }
+    const el = menuItem(label, key === ScratchDump.currentFolderKey, () => switchFolder(key, label));
+    if (host !== label.toLowerCase()) el.title = host;
     folderMenu.appendChild(el);
   });
 
-  // Divider before scratch spaces if there are any
   if (scratchList.length > 0) {
     const div = document.createElement('div');
     div.style.cssText = 'height:1px;background:var(--border);margin:3px 0;';
     folderMenu.appendChild(div);
   }
 
-  // Scratch spaces
   scratchList.forEach(({ key, name }) => {
-    const el = menuItem(name, key === currentFolderKey, () => {
-      switchFolder(key, name);
-    });
+    const el = menuItem(name, key === ScratchDump.currentFolderKey, () => switchFolder(key, name));
     const del = document.createElement('span');
     del.textContent = '×';
     del.style.cssText = 'margin-left:auto;padding-left:8px;color:var(--text3);font-size:13px;';
@@ -624,14 +497,10 @@ async function renderFolderMenu() {
     folderMenu.appendChild(el);
   });
 
-  // Add Scratch
   const addEl = document.createElement('div');
   addEl.className = 'dropdown-item add-scratch';
   addEl.textContent = '+ Add Scratch';
-  addEl.addEventListener('click', () => {
-    folderMenu.classList.add('hidden');
-    openNameDialog();
-  });
+  addEl.addEventListener('click', () => { folderMenu.classList.add('hidden'); openNameDialog(); });
   folderMenu.appendChild(addEl);
 }
 
@@ -640,37 +509,32 @@ function menuItem(label, isActive, onClick) {
   el.className = 'dropdown-item' + (isActive ? ' active' : '');
   el.textContent = truncate(label, 20);
   el.title = label;
-  el.addEventListener('click', () => {
-    folderMenu.classList.add('hidden');
-    onClick();
-  });
+  el.addEventListener('click', () => { folderMenu.classList.add('hidden'); onClick(); });
   return el;
 }
 
 async function switchFolder(key, displayName) {
   await flushSave();
-  currentFolderKey = key;
+  ScratchDump.currentFolderKey = key;
   siteName.textContent = truncate(displayName);
   await loadFolder(key);
 }
 
 async function deleteScratch(key, name) {
   showConfirm(`Delete "${name}"? This cannot be undone.`, async () => {
-    // Remove from scratch list
     let list = await getScratchList();
     list = list.filter(s => s.key !== key);
     await saveScratchList(list);
-    // Remove data
-    await new Promise(r => chrome.storage.local.remove(key, r));
-    // If we were on it, go back to site
-    if (currentFolderKey === key) {
-      const siteKey = 'site:' + hostname;
-      await switchFolder(siteKey, prettyName(hostname));
+    await removeStorageKey(key);
+    if (ScratchDump.currentFolderKey === key) {
+      const siteKey = 'site:' + ScratchDump.hostname;
+      await switchFolder(siteKey, prettyName(ScratchDump.hostname));
     }
   });
 }
 
-// ─── ADD SCRATCH DIALOG ───────────────────────────────────────────────────────
+// ─── DIALOGS ─────────────────────────────────────────────────────────────────
+
 function openNameDialog() {
   nameInput.value = '';
   nameDialog.classList.remove('hidden');
@@ -685,7 +549,6 @@ async function createScratch() {
   const name = nameInput.value.trim();
   if (!name) { nameInput.focus(); return; }
   nameDialog.classList.add('hidden');
-
   const key = 'scratch:' + name + ':' + Date.now();
   const list = await getScratchList();
   list.push({ key, name });
@@ -694,7 +557,6 @@ async function createScratch() {
   await switchFolder(key, name);
 }
 
-// ─── CONFIRM DIALOG ───────────────────────────────────────────────────────────
 let confirmCallback = null;
 function showConfirm(msg, cb) {
   document.getElementById('confirmMsg').textContent = msg;
@@ -710,11 +572,11 @@ confirmCancel.addEventListener('click', () => {
   confirmCallback = null;
 });
 
-// ─── UNDO/REDO BUTTONS ────────────────────────────────────────────────────────
+// ─── TOOLBAR BUTTONS ─────────────────────────────────────────────────────────
+
 undoBtn.addEventListener('click', undo);
 redoBtn.addEventListener('click', redo);
 
-// ─── FORMAT BUTTONS ───────────────────────────────────────────────────────────
 boldBtn.addEventListener('click', () => { toggleFormat('b'); editor.focus(); });
 underlineBtn.addEventListener('click', () => { toggleFormat('u'); editor.focus(); });
 italicBtn.addEventListener('click', () => { toggleFormat('i'); editor.focus(); });
@@ -723,20 +585,20 @@ fszUp.addEventListener('click', () => changeFontSize(1));
 fszDown.addEventListener('click', () => changeFontSize(-1));
 
 function changeFontSize(delta) {
-  settings.textSize = Math.max(8, Math.min(48, settings.textSize + delta));
-  editor.style.fontSize = settings.textSize + 'px';
-  textSizeInput.value = settings.textSize;
+  ScratchDump.settings.textSize = Math.max(8, Math.min(48, ScratchDump.settings.textSize + delta));
+  editor.style.fontSize = ScratchDump.settings.textSize + 'px';
+  document.getElementById('textSizeInput').value = ScratchDump.settings.textSize;
   saveSettings();
 }
 
-// Update format button active states on selection change
 document.addEventListener('selectionchange', () => {
   boldBtn.classList.toggle('active', hasFormat('b'));
   underlineBtn.classList.toggle('active', hasFormat('u'));
   italicBtn.classList.toggle('active', hasFormat('i'));
 });
 
-// ─── COPY / PASTE ─────────────────────────────────────────────────────────────
+// ─── COPY / PASTE BUTTONS ────────────────────────────────────────────────────
+
 copyBtn.addEventListener('click', () => {
   const sel = window.getSelection();
   let text = '';
@@ -747,7 +609,7 @@ copyBtn.addEventListener('click', () => {
   }
   navigator.clipboard.writeText(text).then(() => {
     copyBtn.classList.remove('flash-copy');
-    void copyBtn.offsetWidth; // reflow
+    void copyBtn.offsetWidth;
     copyBtn.classList.add('flash-copy');
   });
 });
@@ -757,159 +619,62 @@ pasteBtn.addEventListener('click', async () => {
     const text = await navigator.clipboard.readText();
     editor.focus();
     insertTextAtCursor(text);
-  } catch {
-    editor.focus();
-  }
+  } catch { editor.focus(); }
 });
 
 // ─── CLOSE ───────────────────────────────────────────────────────────────────
+
 closeBtn.addEventListener('click', () => {
   window.parent.postMessage({ source: 'scratchpad', type: 'close' }, '*');
 });
 
-// ─── SETTINGS ────────────────────────────────────────────────────────────────
+// ─── SETTINGS UI ─────────────────────────────────────────────────────────────
+
 settingsBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   settingsPanel.classList.toggle('hidden');
 });
+
 closeSettings.addEventListener('click', () => settingsPanel.classList.add('hidden'));
 
-fixedSizeCheck.addEventListener('change', () => {
-  settings.fixedSize = fixedSizeCheck.checked;
+document.getElementById('fixedSizeCheck').addEventListener('change', () => {
+  ScratchDump.settings.fixedSize = document.getElementById('fixedSizeCheck').checked;
   saveSettings();
-  window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: settings.fixedSize }, '*');
+  window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: ScratchDump.settings.fixedSize }, '*');
 });
 
-opacityInput.addEventListener('input', () => {
-  let v = parseInt(opacityInput.value) || 100;
+document.getElementById('opacityInput').addEventListener('input', () => {
+  let v = parseInt(document.getElementById('opacityInput').value) || 100;
   v = Math.max(40, Math.min(100, v));
-  settings.opacity = v;
+  ScratchDump.settings.opacity = v;
   saveSettings();
   window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: v }, '*');
 });
 
-textSizeInput.addEventListener('input', () => {
-  let v = parseInt(textSizeInput.value) || 14;
+document.getElementById('textSizeInput').addEventListener('input', () => {
+  let v = parseInt(document.getElementById('textSizeInput').value) || 14;
   v = Math.max(8, Math.min(48, v));
-  settings.textSize = v;
+  ScratchDump.settings.textSize = v;
   editor.style.fontSize = v + 'px';
   saveSettings();
 });
 
-fontSelect.addEventListener('change', () => {
-  settings.font = fontSelect.value;
-  editor.style.fontFamily = settings.font + ', sans-serif';
+document.getElementById('fontSelect').addEventListener('change', () => {
+  ScratchDump.settings.font = document.getElementById('fontSelect').value;
+  editor.style.fontFamily = ScratchDump.settings.font + ', sans-serif';
   saveSettings();
 });
 
-themeSelect.addEventListener('change', () => {
-  settings.theme = themeSelect.value;
-  applyTheme(settings.theme);
+document.getElementById('themeSelect').addEventListener('change', () => {
+  ScratchDump.settings.theme = document.getElementById('themeSelect').value;
+  applyTheme(ScratchDump.settings.theme);
   saveSettings();
 });
 
-function applyTheme(theme) {
-  document.body.classList.remove("theme-light", "theme-dark");
-  document.body.classList.add("theme-" + theme);
-}
+// ─── INIT ────────────────────────────────────────────────────────────────────
 
-function applySettings() {
-  fixedSizeCheck.checked = settings.fixedSize;
-  opacityInput.value = settings.opacity;
-  textSizeInput.value = settings.textSize;
-  fontSelect.value = settings.font;
-  themeSelect.value = settings.theme;
-  editor.style.fontSize = settings.textSize + 'px';
-  editor.style.fontFamily = settings.font + ', sans-serif';
-  applyTheme(settings.theme);
-  // Only send to parent once the iframe-to-content-script link is established;
-  // at init time the content script isn't listening yet, so messages would be lost.
-  if (_hostnameReceived) {
-    window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: settings.opacity }, '*');
-    window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: settings.fixedSize }, '*');
-  }
-}
-
-// ─── MIGRATION v1 → v2 ───────────────────────────────────────────────────────
-// Extract inline base64 images from chrome.storage.local into IndexedDB.
-// Uses granular _migrationStatus for crash-safe resume.
-async function migrateV1toV2() {
-  // Mark in-progress so a crash mid-migration will resume on next load
-  await storageSet({ _migrationStatus: 'in_progress' });
-
-  const allData = await new Promise(r => chrome.storage.local.get(null, r));
-  let migrated = 0;
-
-  for (const [key, val] of Object.entries(allData)) {
-    if (!key.startsWith('site:') && !key.startsWith('scratch:')) continue;
-    if (!val || !val.pages) continue;
-
-    let changed = false;
-    for (let i = 0; i < val.pages.length; i++) {
-      const page = val.pages[i];
-      if (!page || !page.includes('data:image')) continue;
-      val.pages[i] = await extractImagesToIDB(page);
-      changed = true;
-    }
-    if (changed) {
-      await storageSet({ [key]: val });
-      migrated++;
-    }
-  }
-
-  // Verify: spot-check that idb refs resolve
-  let verified = true;
-  for (const [key, val] of Object.entries(allData)) {
-    if (!key.startsWith('site:') && !key.startsWith('scratch:')) continue;
-    if (!val || !val.pages) continue;
-    for (const page of val.pages) {
-      // Match idb:<uuid> refs (UUID v4 format)
-      const idbRefs = (page || '').match(/idb:[0-9a-f-]{36}/g) || [];
-      for (const ref of idbRefs.slice(0, 2)) {
-        const id = ref.slice(4);
-        if (!(await imgStoreHas(id))) { verified = false; break; }
-      }
-      if (!verified) break;
-    }
-    if (!verified) break;
-  }
-
-  if (verified) {
-    await storageSet({
-      _schemaVersion: 2,
-      _migrationStatus: 'complete',
-      _migratedAt: Date.now()
-    });
-    console.log(`ScratchDump: migration v1→v2 complete (${migrated} folders updated)`);
-  } else {
-    await storageSet({ _migrationStatus: 'failed' });
-    console.warn('ScratchDump: migration v1→v2 verification failed — will retry next load');
-  }
-}
-
-// ─── INIT ─────────────────────────────────────────────────────────────────────
 (async function init() {
-  // Ensure schema version exists
-  const meta = await storageGet(['_schemaVersion', '_migrationStatus']);
-  if (!meta._schemaVersion) {
-    await storageSet({ _schemaVersion: 1, _migrationStatus: 'pending' });
-  }
-
-  // Try to initialise IndexedDB — if it fails (incognito, storage pressure),
-  // images stay as compressed base64 in chrome.storage.local.
-  await initImageStore();
-
-  // Run pending migrations (only if IndexedDB is available)
-  const status = meta._migrationStatus || 'pending';
-  if (idbAvailable && (meta._schemaVersion || 1) < 2 && status !== 'complete') {
-    try {
-      await migrateV1toV2();
-    } catch (e) {
-      await storageSet({ _migrationStatus: 'failed' });
-      console.warn('ScratchDump: migration error', e);
-    }
-  }
-
+  await initStorage();
   await loadSettings();
   updateUndoButtons();
 })();
