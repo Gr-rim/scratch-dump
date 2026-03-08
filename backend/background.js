@@ -11,11 +11,11 @@ chrome.action.onClicked.addListener(async (tab) => {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['content.js']
+        files: ['backend/content.js']
       });
       await chrome.scripting.insertCSS({
         target: { tabId: tab.id },
-        files: ['content.css']
+        files: ['backend/content.css']
       });
       // Retry sending the message until the content script is ready
       for (let attempt = 1; attempt <= 5; attempt++) {

@@ -35,7 +35,7 @@
     });
 
     panelIframe = document.createElement('iframe');
-    panelIframe.src = chrome.runtime.getURL('panel.html');
+    panelIframe.src = chrome.runtime.getURL('frontend/panel.html');
     Object.assign(panelIframe.style, {
       position: 'absolute', inset: '0',
       width: '100%', height: '100%',
