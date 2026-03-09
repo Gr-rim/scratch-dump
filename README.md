@@ -52,7 +52,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📋 **Copy & Paste buttons** — copy selection or entire page in one click
 - ↔️ **Resizable window** — drag the bottom-left corner
 - 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
-- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge, Opera only — see note below)
+- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge, Opera only)
 
 ---
 
