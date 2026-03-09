@@ -42,7 +42,7 @@
       border: 'none', borderRadius: '12px',
       display: 'block', background: 'transparent',
     });
-    panelIframe.allow = 'clipboard-read; clipboard-write';
+    panelIframe.allow = 'clipboard-read; clipboard-write; microphone';
 
     // Resize grip — BOTTOM LEFT corner
     const resizeHandle = document.createElement('div');

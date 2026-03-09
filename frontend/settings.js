@@ -32,6 +32,7 @@ function applySettings() {
   document.getElementById('textSizeInput').value = s.textSize;
   document.getElementById('fontSelect').value = s.font;
   document.getElementById('themeSelect').value = s.theme;
+  document.getElementById('sttLangSelect').value = s.sttLang;
   editor.style.fontSize = s.textSize + 'px';
   editor.style.fontFamily = s.font + ', sans-serif';
   applyTheme(s.theme);

@@ -68,6 +68,21 @@
         <option value="light">Light</option>
       </select>
     </label>
+    <label class="setting-row">
+      <span>STT Language</span>
+      <select id="sttLangSelect" class="sel-input">
+        <option value="en-US">English (US)</option>
+        <option value="en-GB">English (UK)</option>
+        <option value="es-ES">Spanish</option>
+        <option value="fr-FR">French</option>
+        <option value="de-DE">German</option>
+        <option value="hi-IN">Hindi</option>
+        <option value="ja-JP">Japanese</option>
+        <option value="ko-KR">Korean</option>
+        <option value="zh-CN">Chinese</option>
+        <option value="pt-BR">Portuguese</option>
+      </select>
+    </label>
     <button id="closeSettings" class="btn-secondary settings-close">Done</button>
   </div>
 
@@ -155,6 +170,15 @@
         <button class="add-page-btn" id="addPageBtn" title="Add page">+</button>
       </div>
       <div class="bottom-right">
+        <button class="icon-btn" id="sttBtn" title="Voice input">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="1" width="6" height="12" rx="3" />
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+        </button>
         <button class="icon-btn" id="settingsBtn" title="Settings">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
@@ -172,6 +196,7 @@
   <script src="noteStorage.js"></script>
   <script src="settings.js"></script>
   <script src="historyManager.js"></script>
+  <script src="stt.js"></script>
   <script src="panel.js"></script>
 </body>
 

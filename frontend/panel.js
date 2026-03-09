@@ -4,34 +4,35 @@
 'use strict';
 
 // ─── DOM REFS ────────────────────────────────────────────────────────────────
-const editor         = document.getElementById('editor');
-const undoBtn        = document.getElementById('undoBtn');
-const redoBtn        = document.getElementById('redoBtn');
-const siteName       = document.getElementById('siteName');
-const folderChevron  = document.getElementById('folderChevron');
-const folderMenu     = document.getElementById('folderMenu');
-const copyBtn        = document.getElementById('copyBtn');
-const pasteBtn       = document.getElementById('pasteBtn');
-const settingsBtn    = document.getElementById('settingsBtn');
-const settingsPanel  = document.getElementById('settingsPanel');
-const closeBtn       = document.getElementById('closeBtn');
-const addPageBtn     = document.getElementById('addPageBtn');
-const pageIndicator  = document.getElementById('pageIndicator');
-const prevPageBtn    = document.getElementById('prevPageBtn');
-const nextPageBtn    = document.getElementById('nextPageBtn');
-const boldBtn        = document.getElementById('boldBtn');
-const underlineBtn   = document.getElementById('underlineBtn');
-const italicBtn      = document.getElementById('italicBtn');
-const fszUp          = document.getElementById('fszUp');
-const fszDown        = document.getElementById('fszDown');
-const confirmDialog  = document.getElementById('confirmDialog');
-const confirmOk      = document.getElementById('confirmOk');
-const confirmCancel  = document.getElementById('confirmCancel');
-const nameDialog     = document.getElementById('nameDialog');
-const nameInput      = document.getElementById('nameInput');
-const nameOk         = document.getElementById('nameOk');
-const nameCancel     = document.getElementById('nameCancel');
-const closeSettings  = document.getElementById('closeSettings');
+const editor = document.getElementById('editor');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+const siteName = document.getElementById('siteName');
+const folderChevron = document.getElementById('folderChevron');
+const folderMenu = document.getElementById('folderMenu');
+const copyBtn = document.getElementById('copyBtn');
+const pasteBtn = document.getElementById('pasteBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const settingsPanel = document.getElementById('settingsPanel');
+const closeBtn = document.getElementById('closeBtn');
+const addPageBtn = document.getElementById('addPageBtn');
+const pageIndicator = document.getElementById('pageIndicator');
+const prevPageBtn = document.getElementById('prevPageBtn');
+const nextPageBtn = document.getElementById('nextPageBtn');
+const boldBtn = document.getElementById('boldBtn');
+const underlineBtn = document.getElementById('underlineBtn');
+const italicBtn = document.getElementById('italicBtn');
+const fszUp = document.getElementById('fszUp');
+const fszDown = document.getElementById('fszDown');
+const confirmDialog = document.getElementById('confirmDialog');
+const confirmOk = document.getElementById('confirmOk');
+const confirmCancel = document.getElementById('confirmCancel');
+const nameDialog = document.getElementById('nameDialog');
+const nameInput = document.getElementById('nameInput');
+const nameOk = document.getElementById('nameOk');
+const nameCancel = document.getElementById('nameCancel');
+const closeSettings = document.getElementById('closeSettings');
+const sttBtn = document.getElementById('sttBtn');
 
 // ─── UNDO/REDO WIRING ───────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const scale = Math.min(1, maxWidth / img.width);
-      canvas.width  = img.width * scale;
+      canvas.width = img.width * scale;
       canvas.height = img.height * scale;
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/jpeg', quality));
@@ -81,18 +82,18 @@ function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
 
 // ─── EDITOR ──────────────────────────────────────────────────────────────────
 let saveTimer = null;
-let lastHTML  = '';
+let lastHTML = '';
 
 // Sanitize HTML to prevent stored XSS
 const SAFE_TAGS = new Set([
-  'div','span','p','br','b','strong','i','em','u','sub','sup',
-  'h1','h2','h3','h4','h5','h6','blockquote','pre','code',
-  'ul','ol','li','a','img','hr','font','table','thead',
-  'tbody','tr','td','th',
+  'div', 'span', 'p', 'br', 'b', 'strong', 'i', 'em', 'u', 'sub', 'sup',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code',
+  'ul', 'ol', 'li', 'a', 'img', 'hr', 'font', 'table', 'thead',
+  'tbody', 'tr', 'td', 'th',
 ]);
 const SAFE_ATTRS = new Set([
-  'style','class','src','href','alt','title','width','height',
-  'colspan','rowspan','target','data-placeholder',
+  'style', 'class', 'src', 'href', 'alt', 'title', 'width', 'height',
+  'colspan', 'rowspan', 'target', 'data-placeholder',
 ]);
 
 function sanitizeHTML(html) {
@@ -622,6 +623,53 @@ pasteBtn.addEventListener('click', async () => {
   } catch { editor.focus(); }
 });
 
+// ─── STT WIRING ──────────────────────────────────────────────────────────────
+
+if (!STT.isSupported() || STT.isBrave()) {
+  sttBtn.style.display = 'none';
+  document.getElementById('sttLangSelect').closest('.setting-row').style.display = 'none';
+}
+
+sttBtn.addEventListener('click', () => {
+  STT.toggle(
+    (final, interim) => {
+      if (final) {
+        editor.focus();
+        insertTextAtCursor(final + ' ');
+        pushUndoState(editor.innerHTML);
+        saveCurrentPage();
+      }
+      updateSTTOverlay(interim);
+    },
+    () => {
+      sttBtn.classList.remove('recording');
+      clearSTTOverlay();
+    },
+    (err) => {
+      sttBtn.classList.remove('recording');
+      clearSTTOverlay();
+      console.warn('STT error:', err);
+    }
+  );
+  sttBtn.classList.toggle('recording', STT.isListening);
+});
+
+function updateSTTOverlay(text) {
+  if (!text) { clearSTTOverlay(); return; }
+  let overlay = document.getElementById('sttOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'sttOverlay';
+    document.querySelector('.editor-wrap').appendChild(overlay);
+  }
+  overlay.textContent = text;
+}
+
+function clearSTTOverlay() {
+  const overlay = document.getElementById('sttOverlay');
+  if (overlay) overlay.remove();
+}
+
 // ─── CLOSE ───────────────────────────────────────────────────────────────────
 
 closeBtn.addEventListener('click', () => {
@@ -668,6 +716,11 @@ document.getElementById('fontSelect').addEventListener('change', () => {
 document.getElementById('themeSelect').addEventListener('change', () => {
   ScratchDump.settings.theme = document.getElementById('themeSelect').value;
   applyTheme(ScratchDump.settings.theme);
+  saveSettings();
+});
+
+document.getElementById('sttLangSelect').addEventListener('change', () => {
+  ScratchDump.settings.sttLang = document.getElementById('sttLangSelect').value;
   saveSettings();
 });
 

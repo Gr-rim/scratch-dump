@@ -14,8 +14,12 @@ const ScratchDump = {
     opacity: 100,
     textSize: 14,
     font: 'Calibri',
-    theme: 'dark'
+    theme: 'dark',
+    sttLang: 'en-US'
   },
+
+  // STT state
+  sttActive: false,
 
   // In-memory cache for current folder data
   folderCache: { key: '', data: null },

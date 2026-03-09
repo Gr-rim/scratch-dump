@@ -52,6 +52,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📋 **Copy & Paste buttons** — copy selection or entire page in one click
 - ↔️ **Resizable window** — drag the bottom-left corner
 - 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
+- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge, Opera only — see note below)
 
 ---
 
@@ -121,6 +122,12 @@ This means:
 - ✅ No analytics, no ads, no third-party anything
 - ✅ Uninstalling the extension removes all data
 
+### Voice Input
+
+Voice recognition uses the browser's built-in Web Speech API. On desktop Chrome and Edge, audio may be processed by Google's or Microsoft's servers respectively for recognition. No audio is handled by ScratchDump itself — it never touches your microphone data directly.
+
+> **Brave users:** Voice input is disabled on Brave due to its built-in blocking of external speech recognition backends. This is intentional — Brave's privacy model conflicts with how the Web Speech API works under the hood.
+
 ---
 
 ## Architecture
@@ -155,6 +162,7 @@ scratch-dump/
 │   ├── noteStorage.js          # chrome.storage CRUD, scratch list, migration
 │   ├── settings.js             # Settings persistence + application
 │   ├── historyManager.js       # Per-page undo/redo stack (pure data structure)
+│   ├── stt.js                  # Web Speech API wrapper, Brave-aware
 │   └── panel.js                # UI coordinator — DOM events, editor, wiring
 └── icons/
     ├── icon16.png
@@ -163,7 +171,7 @@ scratch-dump/
 ```
 
 **Load order** (in `panel.html`):
-`state.js` → `imageStore.js` → `noteStorage.js` → `settings.js` → `historyManager.js` → `panel.js`
+`state.js` → `imageStore.js` → `noteStorage.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
 
 All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build and dependency-free.
 
@@ -172,7 +180,7 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 ## Roadmap
 
 - [ ] Export notes as `.md` or `.txt`
-- [ ] Dictated notes (Voice-to-notes)
+- [x] Dictated notes (Voice-to-notes) — Chrome, Edge, Opera
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
