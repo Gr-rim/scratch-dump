@@ -16,7 +16,7 @@
   // so we never miss the early getHostname request from panel.js
   window.addEventListener('message', onIframeMessage);
 
-  // ── BUILD PANEL ─────────────────────────────────────────────────────────────
+  // ── BUILD PANEL ────────────────────────────────────────────────────────────
   function createPanel() {
     if (panelContainer) return;
 
