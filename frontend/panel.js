@@ -625,7 +625,7 @@ pasteBtn.addEventListener('click', async () => {
 
 // ─── STT WIRING ──────────────────────────────────────────────────────────────
 
-if (!STT.isSupported() || STT.isBrave()) {
+if (!STT.isSTTSupported()) {
   sttBtn.style.display = 'none';
   document.getElementById('sttLangSelect').closest('.setting-row').style.display = 'none';
 }

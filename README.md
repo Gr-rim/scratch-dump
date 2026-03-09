@@ -52,7 +52,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📋 **Copy & Paste buttons** — copy selection or entire page in one click
 - ↔️ **Resizable window** — drag the bottom-left corner
 - 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
-- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge, Opera only)
+- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome only)
 
 ---
 
@@ -124,9 +124,9 @@ This means:
 
 ### Voice Input
 
-Voice recognition uses the browser's built-in Web Speech API. On desktop Chrome and Edge, audio may be processed by Google's or Microsoft's servers respectively for recognition. No audio is handled by ScratchDump itself — it never touches your microphone data directly.
+Voice recognition uses the browser's built-in Web Speech API. On desktop Chrome, audio may be processed by Google's servers for recognition. No audio is handled by ScratchDump itself — it never touches your microphone data directly.
 
-> **Brave users:** Voice input is disabled on Brave due to its built-in blocking of external speech recognition backends. This is intentional — Brave's privacy model conflicts with how the Web Speech API works under the hood.
+> **Note:** Voice input is currently Chrome-only. Edge, Opera, and Brave have inconsistent or blocked speech recognition backends.
 
 ---
 
@@ -180,7 +180,7 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 ## Roadmap
 
 - [ ] Export notes as `.md` or `.txt`
-- [x] Dictated notes (Voice-to-notes) — Chrome, Edge, Opera
+- [x] Dictated notes (Voice-to-notes) — Chrome only
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes

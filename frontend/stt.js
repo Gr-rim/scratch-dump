@@ -10,8 +10,16 @@ const STT = (() => {
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   }
 
-  function isBrave() {
-    return navigator.brave?.isBrave?.() ?? false;
+  function isSTTSupported() {
+    // Web Speech API only works reliably on Chrome
+    // Brave blocks the Google backend
+    // Edge and Opera have inconsistent behaviour
+    const isChrome = !!window.chrome && 
+                     navigator.userAgent.includes('Chrome') &&
+                     !navigator.brave?.isBrave?.() &&
+                     !navigator.userAgent.includes('Edg/') &&
+                     !navigator.userAgent.includes('OPR/');
+    return isChrome && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   }
 
   // Track how many results we've already committed as final text,
@@ -100,8 +108,7 @@ const STT = (() => {
   }
 
   return {
-    isSupported,
-    isBrave,
+    isSTTSupported,
     start,
     stop,
     toggle,
