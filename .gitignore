@@ -28,3 +28,6 @@ npm-debug.log*
 
 # Mobile client PWA — its own project, deployed to GitHub Pages separately
 scratch-bump/
+
+# Throwaway network spike — not part of the extension
+spike/
