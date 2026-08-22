@@ -43,7 +43,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...)
 - 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
 - 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
-- 📤 **Move folders to your phone** — export a folder (pages, images and recognized text) to a single file, and open it in the [scratch-bump](https://github.com/Gr-rim/scratch-dump) mobile app. No account, no server, no network
+- 📤 **Move folders to your phone** — export a folder (pages, images and recognized text) to one file and hand it straight to your phone through the system share sheet. No account, no server, no sync service
 - 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
 - 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
 - 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
@@ -141,7 +141,9 @@ Settings → **Move to Phone** exports the folder you are looking at to a `.scra
 
 An import **replaces** the folder it names rather than merging into it. If that folder already exists here, you are told how many pages will be overwritten before anything is written, and nothing is applied until you confirm. A file that turns out to be damaged leaves your notes untouched — imports apply in one step at the end or not at all.
 
-The mobile side is a separate installable web app, [scratch-bump](https://github.com/Gr-rim/scratch-dump). On Android it registers as a share target, so a `.scratch` file opens straight into it.
+Where the operating system offers a share sheet (Windows, macOS), Export opens it — so the file can go straight to your phone over Nearby Share, Phone Link or AirDrop without a trip through your Downloads folder. Where it does not (Linux, Firefox), Export saves the file and you move it yourself.
+
+The mobile side lives in `scratch-bump/`, a separate project with its own repository. It is a web app today and is being replaced by a standalone application — see **Roadmap**.
 
 ### Text in Images
 
@@ -292,7 +294,8 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 - [x] Dictated notes (Voice-to-notes) — Chrome, Edge and Opera
 - [x] Text in images (OCR) — opt-in, runs locally
 - [x] Move folders between desktop and phone — file based, no server
-- [ ] Live pairing over the local network (QR + WebRTC)
+- [ ] Standalone mobile app, replacing the web client
+- [ ] On-request sync over the local network, with a persistent connection
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
