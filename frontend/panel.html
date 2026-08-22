@@ -83,6 +83,13 @@
         <option value="pt-BR">Portuguese</option>
       </select>
     </label>
+    <div class="setting-row ocr-row">
+      <span>Text in Images</span>
+      <div class="ocr-controls">
+        <button id="ocrActionBtn" class="ocr-btn">Download</button>
+        <span id="ocrStatus" class="ocr-status">Checking…</span>
+      </div>
+    </div>
     <button id="closeSettings" class="btn-secondary settings-close">Done</button>
   </div>
 
@@ -194,6 +201,7 @@
   <script src="state.js"></script>
   <script src="imageStore.js"></script>
   <script src="noteStorage.js"></script>
+  <script src="ocr.js"></script>
   <script src="settings.js"></script>
   <script src="historyManager.js"></script>
   <script src="stt.js"></script>

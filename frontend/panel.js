@@ -330,6 +330,15 @@ editor.addEventListener('keydown', (e) => {
 editor.addEventListener('paste', async (e) => {
   e.preventDefault();
   const items = e.clipboardData?.items || [];
+
+  // Capture the caret before any await. Reading an image and compressing it
+  // takes several async hops, and by the time they finish the selection may
+  // have moved or the editor may have lost focus entirely — the image would
+  // then land wherever the caret drifted to. Forking a copy off to OCR adds
+  // another hop, which is exactly what makes this worth pinning down. (M9)
+  const _sel = window.getSelection();
+  const pasteRange = _sel && _sel.rangeCount ? _sel.getRangeAt(0).cloneRange() : null;
+
   let handled = false;
 
   for (const item of items) {
@@ -338,17 +347,30 @@ editor.addEventListener('paste', async (e) => {
       if (!file) continue;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        compressImage(ev.target.result).then(async (compressed) => {
+        // The clipboard bitmap as it arrived. compressImage() is about to
+        // throw away most of it — 800px wide, JPEG quality 0.7 — and that is
+        // fine for display but unreadable to OCR, which needs roughly 20-30px
+        // of x-height per character. So recognition gets this copy, and only
+        // the compressed one is ever stored.
+        const original = ev.target.result;
+        compressImage(original).then(async (compressed) => {
           const img = document.createElement('img');
           img.src = compressed;
           img.style.width = '200px';
           img.style.height = 'auto';
-          insertNodeAtCursor(img);
+          insertNodeAtCursor(img, pasteRange);
           attachResizer(img);
           // Store the blob once, here, and carry its id on the element so every
           // later save reuses it instead of writing another copy.
           if (idbAvailable) {
-            try { img.setAttribute('data-idb', await imgStorePut(compressed)); }
+            try {
+              const id = await imgStorePut(compressed);
+              img.setAttribute('data-idb', id);
+              // Recognition writes its text under this same id. Queued, never
+              // awaited: the note is usable the moment the image lands, and a
+              // failure in here must not cost the user their paste.
+              ocrEnqueue(id, original);
+            }
             catch (e) { console.warn('ScratchDump: could not store pasted image', e); }
           }
           pushUndoState(editor.innerHTML);
@@ -363,16 +385,16 @@ editor.addEventListener('paste', async (e) => {
 
   if (!handled) {
     const text = e.clipboardData.getData('text/plain');
-    insertTextAtCursor(text);
+    insertTextAtCursor(text, pasteRange);
   }
 });
 
 // ─── CURSOR / TEXT HELPERS ───────────────────────────────────────────────────
 
-function insertNodeAtCursor(node) {
+function insertNodeAtCursor(node, captured = null) {
   const sel = window.getSelection();
-  if (sel.rangeCount) {
-    const range = sel.getRangeAt(0);
+  const range = captured || (sel.rangeCount ? sel.getRangeAt(0) : null);
+  if (range) {
     range.deleteContents();
     range.insertNode(node);
     range.setStartAfter(node);
@@ -384,10 +406,10 @@ function insertNodeAtCursor(node) {
   }
 }
 
-function insertTextAtCursor(text) {
+function insertTextAtCursor(text, captured = null) {
   const sel = window.getSelection();
-  if (!sel.rangeCount) return;
-  const range = sel.getRangeAt(0);
+  const range = captured || (sel.rangeCount ? sel.getRangeAt(0) : null);
+  if (!range) return;
   range.deleteContents();
   const textNode = document.createTextNode(text);
   range.insertNode(textNode);
@@ -1082,5 +1104,119 @@ document.getElementById('sttLangSelect').addEventListener('change', () => {
 (async function init() {
   await initStorage();
   await loadSettings();
+  // After initStorage(), so the row can read whether the language data is
+  // actually there rather than guessing.
+  initOcrSettings();
   updateUndoButtons();
 })();
+
+// ─── IMAGE CONTEXT MENU ──────────────────────────────────────────────────────
+// The only place OCR state is visible. There is no badge on the image, so this
+// menu has to answer the question by itself: whether recognition ran, whether
+// it is still running, and whether it found anything. An item that were simply
+// absent would be indistinguishable from a feature that is broken.
+
+let ocrMenuEl = null;
+
+function hideImageMenu() {
+  if (ocrMenuEl) { ocrMenuEl.remove(); ocrMenuEl = null; }
+}
+
+/**
+ * @param {number} x @param {number} y
+ * @param {Array<{label:string, onPick?:Function}>} items
+ *   An item with no onPick renders as a disabled line — a report, not an
+ *   action. Most states here are reports.
+ */
+function showImageMenu(x, y, items) {
+  hideImageMenu();
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+
+  for (const spec of items) {
+    const item = document.createElement('button');
+    item.className = 'ctx-item';
+    item.textContent = spec.label;
+    item.disabled = !spec.onPick;
+    if (spec.onPick) {
+      item.addEventListener('click', () => { hideImageMenu(); spec.onPick(); });
+    }
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+
+  // The panel is a fixed-size iframe: a menu that overflows is clipped, not
+  // scrolled to, so it has to be nudged back inside rather than left to spill.
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(0, Math.min(x, window.innerWidth  - r.width  - 4)) + 'px';
+  menu.style.top  = Math.max(0, Math.min(y, window.innerHeight - r.height - 4)) + 'px';
+  ocrMenuEl = menu;
+}
+
+const OCR_MENU_LABEL = {
+  reading: 'Reading…',
+  ready:   'Copy text',
+  empty:   'No text found',
+};
+
+editor.addEventListener('contextmenu', async (e) => {
+  const img = e.target && e.target.tagName === 'IMG' ? e.target : null;
+  if (!img) return;                 // text keeps the browser's own menu
+  e.preventDefault();
+
+  if (!(await ocrIsInstalled())) {
+    showImageMenu(e.clientX, e.clientY, [{ label: 'Text recognition is off' }]);
+    return;
+  }
+
+  const id = img.getAttribute('data-idb');
+  const { state, text, error } = await ocrStatusFor(id);
+
+  // Show the actual reason rather than a generic failure. This is the only
+  // surface the user has: the panel is an iframe, so its console is two clicks
+  // further away than most people will go.
+  if (state === 'error') {
+    const short = error.length > 58 ? error.slice(0, 57) + '…' : error;
+    console.warn('ScratchDump: recognition failed for', id, '—', error);
+    // A recorded failure would otherwise be permanent: the row exists, so the
+    // image never gets queued again. Retry is what makes the record safe to keep.
+    showImageMenu(e.clientX, e.clientY, [
+      { label: 'Failed: ' + short },
+      { label: 'Try again', onPick: () => ocrEnqueueStored(id) },
+    ]);
+    return;
+  }
+
+  // No result at all means this image was never queued — pasted before
+  // recognition was switched on, or below the size gate. Offer to read it now
+  // rather than leaving it permanently blank; ocrEnqueueStored() falls back to
+  // the stored display copy, which is all that survives of it.
+  if (state === 'none') {
+    showImageMenu(e.clientX, e.clientY, [{
+      label: 'Read text',
+      onPick: async () => {
+        const ok = await ocrEnqueueStored(id);
+        if (!ok) console.warn('ScratchDump: nothing stored to read for', id);
+      },
+    }]);
+    return;
+  }
+
+  showImageMenu(e.clientX, e.clientY, state === 'ready'
+    ? [{
+        label: 'Copy text',
+        onPick: () => navigator.clipboard.writeText(text).catch(err =>
+          console.warn('ScratchDump: could not copy recognized text', err)),
+      }]
+    : [
+        { label: OCR_MENU_LABEL[state] },
+        // 'empty' is a real answer, but a bad crop or a mid-typing paste can
+        // produce it too, so re-reading stays available.
+        ...(state === 'empty' ? [{ label: 'Try again', onPick: () => ocrEnqueueStored(id) }] : []),
+      ]);
+});
+
+document.addEventListener('click', hideImageMenu);
+document.addEventListener('scroll', hideImageMenu, true);
+window.addEventListener('blur', hideImageMenu);
+editor.addEventListener('keydown', hideImageMenu);

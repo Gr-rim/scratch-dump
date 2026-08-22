@@ -12,8 +12,11 @@
     "clipboardWrite",
     "unlimitedStorage"
   ],
+  "optional_host_permissions": [
+    "https://cdn.jsdelivr.net/*"
+  ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "action": {
     "default_icon": {

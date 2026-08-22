@@ -1,0 +1,4 @@
+# Vendored third-party code is committed exactly as published so it can be
+# verified byte-for-byte against upstream. EOL conversion would silently
+# change these files and break any such check.
+vendor/** -text

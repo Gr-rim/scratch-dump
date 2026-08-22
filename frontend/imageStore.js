@@ -4,8 +4,15 @@
 // Falls back gracefully if IndexedDB is unavailable (incognito, storage pressure).
 
 const IMG_DB_NAME    = 'ScratchDumpImages';
-const IMG_DB_VERSION = 1;
+const IMG_DB_VERSION = 2;
 const IMG_STORE      = 'blobs';
+// Recognized text, keyed by the *same* UUID as the blob it came from. Kept out
+// of note HTML so the note body stays clean and re-running OCR is a store
+// update rather than a document rewrite.
+const OCR_STORE      = 'ocr';
+// Tesseract language data, keyed by lang code ('eng'). Downloaded on request,
+// deletable on request — see ocr.js.
+const LANG_STORE     = 'ocrlang';
 
 /** Whether IndexedDB is available. Set during init, checked by panel.js. */
 let idbAvailable = false;
@@ -22,9 +29,21 @@ function _openImageDB() {
       if (!db.objectStoreNames.contains(IMG_STORE)) {
         db.createObjectStore(IMG_STORE); // keyed by UUID string
       }
+      if (!db.objectStoreNames.contains(OCR_STORE)) {
+        db.createObjectStore(OCR_STORE); // keyed by the blob's UUID
+      }
+      if (!db.objectStoreNames.contains(LANG_STORE)) {
+        db.createObjectStore(LANG_STORE); // keyed by lang code
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror   = () => reject(req.error);
+    // A v1 connection still open elsewhere holds the v2 upgrade back for as
+    // long as it lives, and the open request then neither succeeds nor errors.
+    // Only reachable when a panel from before the update is still running, but
+    // silence is the worst possible symptom: images simply stop loading.
+    req.onblocked = () => console.warn(
+      'ScratchDump: image database upgrade is blocked by another open panel — close other tabs');
   });
 }
 
@@ -108,9 +127,13 @@ async function imgStoreHas(id) {
 async function imgStoreDelete(id) {
   const db = await getImageDB();
   return new Promise((resolve, reject) => {
-    const tx    = db.transaction(IMG_STORE, 'readwrite');
-    const store = tx.objectStore(IMG_STORE);
-    store.delete(id);
+    // Both stores in one transaction: OCR text is derived from the blob and
+    // must never outlive it. Doing this at the call sites instead would mean
+    // every future deletion path has to remember, and the one that forgets
+    // turns C2's orphan sweep back into a slow leak.
+    const tx = db.transaction([IMG_STORE, OCR_STORE], 'readwrite');
+    tx.objectStore(IMG_STORE).delete(id);
+    tx.objectStore(OCR_STORE).delete(id);
     tx.oncomplete = () => resolve();
     tx.onerror    = () => reject(tx.error);
   });
@@ -344,4 +367,107 @@ async function sweepOrphanImages() {
     catch (e) { console.warn('ScratchDump: could not delete image', id, e); }
   }
   return removed;
+}
+
+// ─── OCR TEXT ────────────────────────────────────────────────────────────────
+// Recognized text lives beside the blob under the same UUID, never inside note
+// HTML. Keeping it out of the document means the note body stays clean, the
+// sanitizer needs no new attribute, and re-running recognition with a better
+// engine later is a store update rather than a rewrite of every note.
+//
+// Deletion is handled by imgStoreDelete() above, which drops both rows in one
+// transaction — there is deliberately no standalone ocrDelete().
+
+/**
+ * Record the outcome of a recognition pass.
+ *
+ * A hopeless result is stored *with* its score rather than dropped. An absent
+ * row means "never attempted" and would be retried forever; a row with a low
+ * confidence means "tried, this is all there was".
+ *
+ * @param {string} id — the blob UUID this text came from
+ * @param {{text:string, confidence:number, lang:string, engineVersion:string}} rec
+ * @returns {Promise<void>}
+ */
+async function ocrPut(id, rec) {
+  const db = await getImageDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OCR_STORE, 'readwrite');
+    tx.objectStore(OCR_STORE).put({ ...rec, ts: Date.now() }, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
+/**
+ * @param {string} id
+ * @returns {Promise<{text:string, confidence:number, lang:string, engineVersion:string, ts:number}|null>}
+ *   null means recognition was never attempted for this blob.
+ */
+async function ocrGet(id) {
+  const db = await getImageDB();
+  return new Promise((resolve, reject) => {
+    const tx  = db.transaction(OCR_STORE, 'readonly');
+    const req = tx.objectStore(OCR_STORE).get(id);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+// ─── LANGUAGE DATA ───────────────────────────────────────────────────────────
+// Tesseract's traineddata is several MB, so it is not shipped in the package.
+// The user downloads it from Settings when they want OCR, and deletes it when
+// they don't. Until it is present the OCR queue is inert — see ocr.js.
+
+/**
+ * @param {string} code — e.g. 'eng'
+ * @param {ArrayBuffer} buf — raw .traineddata bytes
+ * @returns {Promise<void>}
+ */
+async function langPut(code, buf) {
+  const db = await getImageDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LANG_STORE, 'readwrite');
+    tx.objectStore(LANG_STORE).put({ buf, bytes: buf.byteLength, ts: Date.now() }, code);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
+/**
+ * @param {string} code
+ * @returns {Promise<{buf:ArrayBuffer, bytes:number, ts:number}|null>}
+ */
+async function langGet(code) {
+  const db = await getImageDB();
+  return new Promise((resolve, reject) => {
+    const tx  = db.transaction(LANG_STORE, 'readonly');
+    const req = tx.objectStore(LANG_STORE).get(code);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror   = () => reject(req.error);
+  });
+}
+
+/**
+ * Size of the stored language data without deserialising the buffer itself.
+ * @param {string} code
+ * @returns {Promise<number>} bytes, or 0 when absent
+ */
+async function langBytes(code) {
+  const rec = await langGet(code);
+  return rec ? rec.bytes : 0;
+}
+
+/**
+ * @param {string} code
+ * @returns {Promise<void>}
+ */
+async function langDelete(code) {
+  const db = await getImageDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LANG_STORE, 'readwrite');
+    tx.objectStore(LANG_STORE).delete(code);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => reject(tx.error);
+  });
 }

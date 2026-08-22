@@ -43,6 +43,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...)
 - 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
 - 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
+- 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
 - 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
 - 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
 - 🔄 **Safe migration** — existing notes are automatically migrated with verify-before-commit safety
@@ -131,7 +132,22 @@ This means:
 - ✅ No analytics, no ads, no third-party anything
 - ✅ Uninstalling the extension removes all data
 
-The panel makes no network requests at all. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
+The panel makes no network requests at all, with exactly one opt-in exception: enabling **Text in Images** downloads a language file once (see below). Leave that off and the extension never touches the network. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
+
+### Text in Images
+
+Recognition runs entirely on your machine — images are never uploaded anywhere. The only network request is for the language data itself.
+
+The recognition engine ships inside the extension, because Manifest V3 forbids loading code from a remote server. What is *not* bundled is Tesseract's ~4 MB English language file, which would quadruple the download for people who never use the feature. So:
+
+- **Download** (Settings → Text in Images) fetches it once from jsDelivr and stores it in IndexedDB. Chrome asks for permission to reach that host at the moment you click, not at install time.
+- **Delete** removes the data and hands the host permission back. The extension returns to making no network requests at all.
+
+Until you download it, pasting behaves exactly as it always did and nothing is recognized.
+
+Recognized text is stored beside the image rather than inside the note, so notes look the same and the text is deleted automatically whenever its image is.
+
+A caveat worth knowing: images are compressed for display before being stored, so recognition runs on the full-resolution clipboard image at paste time. Right-clicking an older image offers **Read text**, but that can only read the compressed copy and will do noticeably worse.
 
 ### Voice Input
 
@@ -231,23 +247,31 @@ scratch-dump/
 │   ├── noteStorage.js          # chrome.storage CRUD, scratch list, cross-tab sync
 │   ├── settings.js             # Settings persistence + application
 │   ├── historyManager.js       # Per-page undo/redo stack (pure data structure)
+│   ├── ocr.js                  # Recognition — language data install/delete, job queue, worker lifecycle
+│   ├── ocrWorker.js            # Preprocessing worker — upscale + binarize (started as a Worker, not a script tag)
 │   ├── stt.js                  # Web Speech API wrapper, Brave-aware
 │   └── panel.js                # UI coordinator — DOM events, editor, wiring
 ├── icons/
 │   ├── icon16.png
 │   ├── icon48.png
 │   └── icon128.png
-└── fonts/                      # bundled — no webfont fetch
-    ├── Roboto-Regular.ttf
-    ├── Roboto-Bold.ttf
-    ├── Roboto-Italic.ttf
-    └── Roboto-BoldItalic.ttf
+├── fonts/                      # bundled — no webfont fetch
+│   ├── Roboto-Regular.ttf
+│   ├── Roboto-Bold.ttf
+│   ├── Roboto-Italic.ttf
+│   └── Roboto-BoldItalic.ttf
+└── vendor/
+    └── tesseract/              # bundled — MV3 forbids remotely hosted code
+        ├── tesseract.min.js
+        ├── worker.min.js
+        ├── tesseract-core-simd-lstm.js
+        └── tesseract-core-simd-lstm.wasm
 ```
 
 **Load order** (in `panel.html`):
-`state.js` → `imageStore.js` → `noteStorage.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
+`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
 
-All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build and dependency-free.
+All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build. The one third-party dependency is the vendored Tesseract engine under `vendor/`, committed as-is and never fetched at runtime.
 
 ---
 
@@ -255,6 +279,7 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 
 - [ ] Export notes as `.md` or `.txt`
 - [x] Dictated notes (Voice-to-notes) — Chrome, Edge and Opera
+- [x] Text in images (OCR) — opt-in, runs locally
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
