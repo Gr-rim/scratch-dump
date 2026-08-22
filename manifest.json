@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ScratchDump",
-  "version": "1.1.0",
+  "version": "1.1.5",
   "description": "A per-site scratchpad that organises your notes by website, stored locally.",
   "permissions": [
     "storage",

@@ -11,15 +11,23 @@ const STT = (() => {
   }
 
   function isSTTSupported() {
-    // Web Speech API only works reliably on Chrome
-    // Brave blocks the Google backend
-    // Edge and Opera have inconsistent behaviour
-    const isChrome = !!window.chrome && 
-                     navigator.userAgent.includes('Chrome') &&
-                     !navigator.brave?.isBrave?.() &&
-                     !navigator.userAgent.includes('Edg/') &&
-                     !navigator.userAgent.includes('OPR/');
-    return isChrome && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    // The API is present on every Chromium browser; whether it reaches a
+    // recognition backend is a separate question, and not one a user-agent
+    // string can answer.
+    //
+    // Brave is the only blanket exclusion: it ships without the Google
+    // endpoint, so every attempt fails and a button that can never work is
+    // worse than no button. Edge and Opera can both fail — Edge wants Windows'
+    // online speech recognition turned on, Opera does not always carry the API
+    // keys — but they fail per attempt rather than always, and the profiles
+    // where they work are ordinary ones. So they get the button, and a visible
+    // message on the attempts that do not work.
+    //
+    // navigator.brave.isBrave() returns a Promise, and a Promise is truthy —
+    // which is what makes this synchronous check come out right on Brave.
+    // Awaiting it would mean showing the button and then taking it away.
+    const isBrave = !!navigator.brave?.isBrave?.();
+    return !isBrave && isSupported();
   }
 
   // Track how many results we've already committed as final text,

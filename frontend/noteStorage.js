@@ -1,13 +1,35 @@
-// noteStorage.js — chrome.storage.local helpers + migration for ScratchDump
-// No DOM, no events. Only touches chrome.storage and IndexedDB (via imageStore).
+// noteStorage.js — chrome.storage.local helpers + cross-tab sync for ScratchDump
+// No DOM. Only touches chrome.storage and IndexedDB (via imageStore).
+// Migration lives in the service worker — see backend/background.js.
 'use strict';
 
 // ─── LOW-LEVEL HELPERS ───────────────────────────────────────────────────────
-function storageGet(keys) {
-  return new Promise(resolve => chrome.storage.local.get(keys, resolve));
+// chrome.storage reports failures through runtime.lastError rather than by
+// throwing or passing an error to the callback. Unchecked, a failed write is
+// indistinguishable from a successful one and the user keeps typing into a pad
+// that stopped saving.
+
+function _lastError(verb) {
+  const err = chrome.runtime.lastError;
+  return err ? new Error(err.message || ('storage.' + verb + ' failed')) : null;
 }
+
+function storageGet(keys) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(keys, (result) => {
+      const err = _lastError('get');
+      err ? reject(err) : resolve(result);
+    });
+  });
+}
+
 function storageSet(obj) {
-  return new Promise(resolve => chrome.storage.local.set(obj, resolve));
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set(obj, () => {
+      const err = _lastError('set');
+      err ? reject(err) : resolve();
+    });
+  });
 }
 
 // ─── FOLDER DATA ─────────────────────────────────────────────────────────────
@@ -23,8 +45,18 @@ async function getFolderData(folderKey) {
 }
 
 async function saveFolderData(folderKey, folderData) {
+  // Stamp the writer so our own onChanged echo can be told apart from a write
+  // made by a panel in another tab.
+  folderData._w = ScratchDump.instanceId;
   ScratchDump.folderCache = { key: folderKey, data: folderData };
   await storageSet({ [folderKey]: folderData });
+}
+
+/** Drop the in-memory copy of a folder, forcing the next read to hit storage. */
+function invalidateFolderCache(folderKey) {
+  if (!folderKey || ScratchDump.folderCache.key === folderKey) {
+    ScratchDump.folderCache = { key: '', data: null };
+  }
 }
 
 // ─── SCRATCH LIST ────────────────────────────────────────────────────────────
@@ -42,91 +74,79 @@ async function saveScratchList(list) {
 // ─── ALL FOLDER KEYS (for dropdown) ──────────────────────────────────────────
 
 async function getAllStorageData() {
-  return new Promise(resolve => chrome.storage.local.get(null, resolve));
+  return storageGet(null);
 }
+
+/**
+ * Keys this panel deleted itself. A deletion echo has no newValue, so it
+ * carries no _w stamp to recognise it by — this set stands in for one.
+ */
+const _selfRemoved = new Set();
 
 async function removeStorageKey(key) {
-  return new Promise(r => chrome.storage.local.remove(key, r));
-}
-
-// ─── MIGRATION v1 → v2 ───────────────────────────────────────────────────────
-// Extract inline base64 images from chrome.storage.local into IndexedDB.
-// Uses granular _migrationStatus for crash-safe resume.
-
-async function migrateV1toV2() {
-  // Mark in-progress so a crash mid-migration will resume on next load
-  await storageSet({ _migrationStatus: 'in_progress' });
-
-  const allData = await getAllStorageData();
-  let migrated = 0;
-
-  for (const [key, val] of Object.entries(allData)) {
-    if (!key.startsWith('site:') && !key.startsWith('scratch:')) continue;
-    if (!val || !val.pages) continue;
-
-    let changed = false;
-    for (let i = 0; i < val.pages.length; i++) {
-      const page = val.pages[i];
-      if (!page || !page.includes('data:image')) continue;
-      val.pages[i] = await extractImagesToIDB(page);
-      changed = true;
-    }
-    if (changed) {
-      await storageSet({ [key]: val });
-      migrated++;
-    }
-  }
-
-  // Verify: spot-check that idb refs resolve
-  let verified = true;
-  for (const [key, val] of Object.entries(allData)) {
-    if (!key.startsWith('site:') && !key.startsWith('scratch:')) continue;
-    if (!val || !val.pages) continue;
-    for (const page of val.pages) {
-      // Match idb:<uuid> refs (UUID v4 format)
-      const idbRefs = (page || '').match(/idb:[0-9a-f-]{36}/g) || [];
-      for (const ref of idbRefs.slice(0, 2)) {
-        const id = ref.slice(4);
-        if (!(await imgStoreHas(id))) { verified = false; break; }
-      }
-      if (!verified) break;
-    }
-    if (!verified) break;
-  }
-
-  if (verified) {
-    await storageSet({
-      _schemaVersion: 2,
-      _migrationStatus: 'complete',
-      _migratedAt: Date.now()
+  invalidateFolderCache(key);
+  _selfRemoved.add(key);
+  await new Promise((resolve, reject) => {
+    chrome.storage.local.remove(key, () => {
+      const err = _lastError('remove');
+      err ? reject(err) : resolve();
     });
-    console.log(`ScratchDump: migration v1→v2 complete (${migrated} folders updated)`);
-  } else {
-    await storageSet({ _migrationStatus: 'failed' });
-    console.warn('ScratchDump: migration v1→v2 verification failed — will retry next load');
-  }
+  });
+  // Safety net, in case the change event never arrives.
+  setTimeout(() => _selfRemoved.delete(key), 1000);
 }
+
+// ─── CROSS-TAB SYNC ──────────────────────────────────────────────────────────
+// Each panel iframe caches the folder it is showing. Without this listener a
+// second panel on the same site keeps serving its stale cache and overwrites
+// whatever the first one saved.
+
+const NOTE_KEY_PREFIX_RE = /^(site|scratch):/;
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') return;
+
+  for (const [key, change] of Object.entries(changes)) {
+    if (!NOTE_KEY_PREFIX_RE.test(key)) continue;
+
+    // onChanged fires in the writing context too; skip our own writes.
+    if (change.newValue && change.newValue._w === ScratchDump.instanceId) continue;
+    if (!change.newValue && _selfRemoved.has(key)) { _selfRemoved.delete(key); continue; }
+
+    invalidateFolderCache(key);
+
+    if (key === ScratchDump.currentFolderKey &&
+        typeof ScratchDump.onExternalChange === 'function') {
+      ScratchDump.onExternalChange(key, change.newValue || null);
+    }
+  }
+});
 
 // ─── INIT STORAGE ────────────────────────────────────────────────────────────
-// Called once from panel.js init(). Sets up schema version and runs migrations.
+// Called once from panel.js init(). Opens the blob store and waits for the
+// service worker to confirm the schema is current.
+
+// Resolves once the worker has confirmed the schema is current. Writes wait on
+// it, so a panel cannot save a page into a folder the migration is rewriting.
+let _markStorageReady;
+const storageReady = new Promise(resolve => { _markStorageReady = resolve; });
 
 async function initStorage() {
-  const meta = await storageGet(['_schemaVersion', '_migrationStatus']);
-  if (!meta._schemaVersion) {
-    await storageSet({ _schemaVersion: 1, _migrationStatus: 'pending' });
-  }
-
-  // Initialise IndexedDB — if unavailable, images stay as compressed base64
+  // IndexedDB first — if it is unavailable, images stay inline as base64.
   await initImageStore();
 
-  // Run pending migrations (only if IndexedDB is available)
-  const status = meta._migrationStatus || 'pending';
-  if (idbAvailable && (meta._schemaVersion || 1) < 2 && status !== 'complete') {
-    try {
-      await migrateV1toV2();
-    } catch (e) {
-      await storageSet({ _migrationStatus: 'failed' });
-      console.warn('ScratchDump: migration error', e);
+  // Migration is owned by the service worker. It runs as one instance per
+  // profile, so it cannot race itself the way one-migration-per-open-panel did.
+  try {
+    const res = await chrome.runtime.sendMessage({ action: 'ensureStorageReady' });
+    if (res && res.ready === false) {
+      console.warn('ScratchDump: storage not ready —', res.error);
     }
+  } catch (e) {
+    // The panel still works on already-migrated data; a later start retries.
+    console.warn('ScratchDump: could not reach the service worker', e);
+  } finally {
+    // Always release the gate — a stuck worker must not freeze saving forever.
+    _markStorageReady();
   }
 }

@@ -1,5 +1,48 @@
 /* panel.css */
-@import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,400;0,700;1,400&display=swap');
+
+/* Roboto ships with the extension. It used to be pulled from Google Fonts,
+   which meant every panel open announced itself to a third party from
+   whatever site the user happened to be on — squarely against what this
+   extension promises, and a silent fallback to a generic sans when offline.
+
+   Four static faces rather than one variable file. Nothing here sets a weight
+   on .editor: its content takes 700 from <b>/<strong>/<h1>-<h6> and italic
+   from <i>/<em>, so regular, bold, italic and bold-italic are the only four
+   combinations the toolbar can produce. A 100-900 variable axis would have
+   been range nothing asks for, and the roman variable file carried no italic
+   axis at all — italics were being synthesised. All four are now real
+   outlines. Weights in between resolve to the nearer of 400 and 700. */
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/Roboto-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/Roboto-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/Roboto-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/Roboto-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
 
 *,
 *::before,
@@ -26,6 +69,11 @@
   --radius: 8px;
   --bar-h: 38px;
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Tells the browser which way to paint the widgets the page does not style
+     itself — scrollbars, select menus, number spinners. Dark is the default
+     theme, and the tokens above are the dark set. */
+  color-scheme: dark;
 }
 
 .theme-light {
@@ -39,6 +87,7 @@
   --btn-bg: rgba(0, 0, 0, 0.05);
   --btn-hover: rgba(0, 0, 0, 0.1);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  color-scheme: light;
 }
 
 .theme-dark {
@@ -52,6 +101,7 @@
   --btn-bg: rgba(255, 255, 255, 0.07);
   --btn-hover: rgba(255, 255, 255, 0.13);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
 }
 
 html,
@@ -191,6 +241,28 @@ body {
   animation: dropIn 0.12s ease;
 }
 
+/* The menu scrolls once there are enough scratch spaces to pass max-height.
+   .editor styles its own scrollbar; this one was left to the UA, which drew it
+   light in both themes. Always visible rather than hover-revealed like the
+   editor's — the menu is only on screen while it is being used. */
+.dropdown-menu::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.dropdown-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dropdown-menu::-webkit-scrollbar-thumb {
+  background: var(--bg3);
+  border-radius: 10px;
+}
+
+.dropdown-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--text3);
+}
+
 @keyframes dropIn {
   from {
     opacity: 0;
@@ -296,7 +368,11 @@ body {
 .editor img {
   max-width: 100%;
   display: inline-block;
-  cursor: nw-resize;
+  /* The resizer is horizontal-only and lives in the right 35%, where
+     attachResizer sets ew-resize inline. It clears the inline value again on
+     the left 65%, so this is what shows there: a diagonal cursor here promised
+     a drag that has never existed. */
+  cursor: default;
   border-radius: 4px;
   outline: 2px solid transparent;
   transition: outline 0.15s;
@@ -415,6 +491,12 @@ body {
 .bottom-right {
   display: flex;
   align-items: center;
+  gap: 2px;
+  /* Containing block for #sttHint, which is positioned against it. Without
+     this the hint resolves against the iframe's initial containing block and
+     renders a full viewport height above the panel, where it is never seen —
+     which is the only way voice failures are reported. */
+  position: relative;
 }
 
 .close-btn {
@@ -700,9 +782,6 @@ input[type="checkbox"] {
 }
 
 /* ─── STT ─── */
-.bottom-right {
-  gap: 2px;
-}
 
 #sttBtn.recording {
   color: var(--danger);
@@ -751,4 +830,78 @@ input[type="checkbox"] {
   box-shadow: var(--shadow);
   animation: fadeIn 0.15s ease;
   z-index: 50;
+}
+/* ─── NOTICES (cross-tab sync, save failures) ─── */
+#noticeStack {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+#syncNotice,
+#saveError,
+#loadError {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 14px;
+  font-size: 12px;
+  color: var(--text2);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  animation: fadeIn 0.15s ease;
+}
+
+#saveError,
+#loadError {
+  color: #fff;
+  background: var(--danger);
+  border-bottom-color: transparent;
+}
+
+#saveError .sync-action,
+#loadError .sync-action {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+#saveError .sync-action:hover,
+#loadError .sync-action:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Locked while notes are being prepared, or after a read that failed. */
+.editor.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.sync-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-action {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sync-action:hover {
+  background: var(--btn-hover);
 }

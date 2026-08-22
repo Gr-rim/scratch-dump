@@ -37,10 +37,11 @@ function applySettings() {
   editor.style.fontFamily = s.font + ', sans-serif';
   applyTheme(s.theme);
 
-  // Only send to parent once the iframe-to-content-script link is established;
-  // at init time the content script isn't listening yet, so messages would be lost.
-  if (ScratchDump.hostnameReceived) {
-    window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: s.opacity }, '*');
-    window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: s.fixedSize }, '*');
+  // Only send to the parent once the worker has resolved the host origin.
+  // Before that there is nothing to address the message to, and initWithHostname
+  // sends both of these itself as soon as identity lands.
+  if (ScratchDump.hostOrigin) {
+    postToHost('setOpacity', s.opacity);
+    postToHost('setFixedSize', s.fixedSize);
   }
 }

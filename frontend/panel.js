@@ -83,6 +83,7 @@ function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
 // ─── EDITOR ──────────────────────────────────────────────────────────────────
 let saveTimer = null;
 let lastHTML = '';
+let dirty = false;
 
 // Sanitize HTML to prevent stored XSS
 const SAFE_TAGS = new Set([
@@ -93,7 +94,7 @@ const SAFE_TAGS = new Set([
 ]);
 const SAFE_ATTRS = new Set([
   'style', 'class', 'src', 'href', 'alt', 'title', 'width', 'height',
-  'colspan', 'rowspan', 'target', 'data-placeholder',
+  'colspan', 'rowspan', 'target', 'data-placeholder', 'data-idb',
 ]);
 
 function sanitizeHTML(html) {
@@ -129,23 +130,182 @@ async function setEditorHTML(html, pushToStack = true) {
   attachImageResizers();
 }
 
-function saveCurrentPage() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    const fd = await getFolderData(ScratchDump.currentFolderKey);
-    while (fd.pages.length <= ScratchDump.currentPageIdx) fd.pages.push('');
-    fd.pages[ScratchDump.currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
-    await saveFolderData(ScratchDump.currentFolderKey, fd);
-  }, 300);
+// Every write goes through one serialized chain. clearTimeout can cancel a
+// debounced save that has not fired yet, but it cannot stop one already
+// running — awaiting the chain can, so a flush never races a save in flight.
+let savePending = Promise.resolve();
+
+// Writes handed to the chain but not yet on disk. `dirty` goes false the moment
+// a job is queued, so without this the window between queueing and landing
+// looks quiet — another tab's change would be adopted there, and our own write
+// would then come down on top of it.
+let inFlight = 0;
+
+function writeCurrentPage() {
+  const folderKey = ScratchDump.currentFolderKey;
+  if (!folderKey) return savePending;   // hostname handshake hasn't landed yet
+
+  // Snapshot synchronously: by the time this job runs the editor may already
+  // be showing a different page.
+  const pageIdx = ScratchDump.currentPageIdx;
+  const html = editor.innerHTML;
+  dirty = false;                        // this write carries the current content
+
+  if (loadFailed) return savePending;   // never overwrite notes we failed to read
+
+  inFlight++;
+  savePending = savePending.then(async () => {
+    await storageReady;   // never write into a schema the worker is rewriting
+    const fd = await getFolderData(folderKey);
+    while (fd.pages.length <= pageIdx) fd.pages.push('');
+    fd.pages[pageIdx] = await extractImagesToIDB(html);
+    await saveFolderData(folderKey, fd);
+    clearSaveError();
+  }).catch(err => {
+    dirty = true;                       // retried on the next edit or flush
+    console.warn('ScratchDump: save failed', err);
+    showSaveError(err);
+  }).finally(() => { inFlight--; });
+
+  return savePending;
 }
 
-async function flushSave() {
+function saveCurrentPage() {
+  dirty = true;
   clearTimeout(saveTimer);
-  const fd = await getFolderData(ScratchDump.currentFolderKey);
-  while (fd.pages.length <= ScratchDump.currentPageIdx) fd.pages.push('');
-  fd.pages[ScratchDump.currentPageIdx] = await extractImagesToIDB(editor.innerHTML);
-  await saveFolderData(ScratchDump.currentFolderKey, fd);
+  // Drop the handle as the callback runs. A timer that has already fired still
+  // holds a numeric id, and hasUnsavedEdits() reads that as an edit pending
+  // forever — which left every cross-tab change looking like a conflict.
+  saveTimer = setTimeout(() => { saveTimer = null; writeCurrentPage(); }, 300);
 }
+
+/** Write now, and resolve once the queue has drained. */
+function flushSave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  if (dirty) writeCurrentPage();
+  return savePending;
+}
+
+/** Edits the user has made that are not on disk yet. */
+function hasUnsavedEdits() {
+  return dirty || saveTimer !== null || inFlight > 0;
+}
+
+// ─── NOTICES ─────────────────────────────────────────────────────────────────
+// Sync and save-failure messages share one strip above the editor, so a second
+// message stacks under the first instead of covering it.
+
+function noticeStack() {
+  let stack = document.getElementById('noticeStack');
+  if (!stack) {
+    stack = document.createElement('div');
+    stack.id = 'noticeStack';
+    document.querySelector('.editor-wrap').appendChild(stack);
+  }
+  return stack;
+}
+
+function describeStorageError(err) {
+  const msg = String((err && err.message) || err || '');
+  if (/context invalidated|Extension context/i.test(msg)) {
+    return 'ScratchDump was reloaded. Reopen the panel to keep saving.';
+  }
+  if (/quota|QUOTA_BYTES/i.test(msg)) return 'This profile is out of storage space.';
+  return msg || 'Storage did not respond.';
+}
+
+// A failed save is the one thing this panel must never do quietly — the user
+// is still typing into an editor whose contents are no longer being kept.
+function showSaveError(err) {
+  let el = document.getElementById('saveError');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'saveError';
+
+    const msg = document.createElement('span');
+    msg.className = 'sync-msg';
+    el.appendChild(msg);
+
+    const retry = document.createElement('button');
+    retry.className = 'sync-action';
+    retry.textContent = 'Retry';
+    retry.title = 'Try saving again now';
+    retry.addEventListener('click', () => { dirty = true; flushSave(); });
+    el.appendChild(retry);
+
+    noticeStack().appendChild(el);
+  }
+  el.firstChild.textContent = 'Not saving — ' + describeStorageError(err);
+}
+
+function clearSaveError() {
+  const el = document.getElementById('saveError');
+  if (el) el.remove();
+}
+
+// ─── LOAD FAILURES ───────────────────────────────────────────────────────────
+// A folder that could not be read leaves an empty editor that looks exactly
+// like an empty note. Typing into it and saving would replace notes that are
+// still on disk, so the editor stays locked until the read succeeds.
+
+let loadFailed = false;
+let retryLoad = null;
+
+function setEditorLocked(locked, reason) {
+  editor.setAttribute('contenteditable', locked ? 'false' : 'true');
+  editor.classList.toggle('locked', locked);
+  if (locked && reason) editor.setAttribute('aria-label', reason);
+  else editor.removeAttribute('aria-label');
+}
+
+function markLoadFailure(err, retry) {
+  loadFailed = true;
+  retryLoad = retry;
+  setEditorLocked(true, 'Notes could not be loaded');
+  console.warn('ScratchDump: could not load notes', err);
+
+  let el = document.getElementById('loadError');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadError';
+
+    const msg = document.createElement('span');
+    msg.className = 'sync-msg';
+    el.appendChild(msg);
+
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'sync-action';
+    retryBtn.textContent = 'Retry';
+    retryBtn.title = 'Try loading these notes again';
+    retryBtn.addEventListener('click', () => {
+      const again = retryLoad;
+      clearLoadFailure();
+      if (again) again();
+    });
+    el.appendChild(retryBtn);
+
+    noticeStack().appendChild(el);
+  }
+  el.firstChild.textContent = 'Could not load these notes — ' + describeStorageError(err);
+}
+
+function clearLoadFailure() {
+  loadFailed = false;
+  retryLoad = null;
+  setEditorLocked(false);
+  const el = document.getElementById('loadError');
+  if (el) el.remove();
+}
+
+// The 300 ms debounce is a data-loss window whenever the frame goes away.
+// visibilitychange covers the common path — the user switches tabs, then
+// closes the one they left. pagehide is best-effort only: chrome.storage has
+// no synchronous write, so a frame torn down at once may not finish.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushSave();
+});
+window.addEventListener('pagehide', () => { flushSave(); });
 
 // ─── EDITOR EVENTS ───────────────────────────────────────────────────────────
 
@@ -178,13 +338,19 @@ editor.addEventListener('paste', async (e) => {
       if (!file) continue;
       const reader = new FileReader();
       reader.onload = (ev) => {
-        compressImage(ev.target.result).then(compressed => {
+        compressImage(ev.target.result).then(async (compressed) => {
           const img = document.createElement('img');
           img.src = compressed;
           img.style.width = '200px';
           img.style.height = 'auto';
           insertNodeAtCursor(img);
           attachResizer(img);
+          // Store the blob once, here, and carry its id on the element so every
+          // later save reuses it instead of writing another copy.
+          if (idbAvailable) {
+            try { img.setAttribute('data-idb', await imgStorePut(compressed)); }
+            catch (e) { console.warn('ScratchDump: could not store pasted image', e); }
+          }
           pushUndoState(editor.innerHTML);
           saveCurrentPage();
         });
@@ -350,51 +516,113 @@ function truncate(str, max = 14) {
   return str.length > max ? str.slice(0, max - 1) + '…' : str;
 }
 
+/**
+ * Send to the host page, addressed to its real origin once the worker has
+ * resolved it. The wildcard covers only the window before that: these messages
+ * are panel chrome — close, opacity, size lock — and carry no note content,
+ * and content.js rejects anything that is not from the extension origin.
+ */
+function postToHost(type, payload) {
+  window.parent.postMessage({ source: 'scratchpad', type, payload },
+    ScratchDump.hostOrigin || '*');
+}
+
 async function initWithHostname(host) {
-  ScratchDump.hostnameReceived = true;
-  clearInterval(ScratchDump.hostnameRetry);
   ScratchDump.hostname = host;
   ScratchDump.currentFolderKey = 'site:' + host;
   const display = host ? truncate(prettyName(host)) : 'Scratchpad';
   siteName.textContent = display;
+
+  // Reading before the worker has confirmed the schema renders idb: refs as
+  // broken images, and a save in that window writes base64 straight back into
+  // chrome.storage.local — the thing the v2 schema exists to avoid.
+  setEditorLocked(true, 'Preparing notes');
+  try { await storageReady; } finally { setEditorLocked(false); }
+
   await loadFolder(ScratchDump.currentFolderKey);
   const s = ScratchDump.settings;
-  window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: s.opacity }, '*');
-  window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: s.fixedSize }, '*');
+  postToHost('setOpacity', s.opacity);
+  postToHost('setFixedSize', s.fixedSize);
 }
 
 window.addEventListener('message', (e) => {
+  // Identity is settled before any message here matters, so the host origin is
+  // always known: nothing is accepted before it is, nothing from anywhere else
+  // after.
+  if (!ScratchDump.hostOrigin || e.origin !== ScratchDump.hostOrigin) return;
   if (!e.data || e.data.source !== 'scratchpad-host') return;
-  if (e.data.type === 'hostname') initWithHostname(e.data.payload);
+
+  if (e.data.type === 'panelHidden') stopDictation();
 });
 
-function requestHostname() {
-  if (ScratchDump.hostnameReceived) return;
-  window.parent.postMessage({ source: 'scratchpad', type: 'getHostname' }, '*');
-}
-requestHostname();
-ScratchDump.hostnameRetry = setInterval(requestHostname, 300);
+// Which site's notes this panel opens is decided by the service worker, which
+// reads the tab's own URL from the browser.
+//
+// The panel never asks the page, not even as a fallback. The page and our
+// content script share one window and one origin, so a hostname the page
+// invented is indistinguishable at this end from a real one — which means any
+// window in which the page is allowed to answer is a window in which it can
+// point this panel at another site's notes. No check separates the two; only a
+// source that cannot be forged does. A worker that does not answer therefore
+// locks the editor rather than falling back to one that can be.
+(async function resolveHost() {
+  let info = null;
+  try {
+    info = await chrome.runtime.sendMessage({ action: 'getHostInfo' });
+  } catch (e) {
+    info = { ok: false, reason: String((e && e.message) || e) };
+  }
+
+  if (info && info.ok && info.hostname) {
+    ScratchDump.hostOrigin = info.origin;
+    try {
+      await initWithHostname(info.hostname);
+    } catch (err) {
+      markLoadFailure(err, () => initWithHostname(info.hostname));
+    }
+    return;
+  }
+
+  markLoadFailure(
+    new Error('this site could not be identified (' +
+      ((info && info.reason) || 'no answer from the service worker') + ')'),
+    resolveHost);
+})();
 
 // ─── LOAD FOLDER / PAGE ─────────────────────────────────────────────────────
 
 async function loadFolder(folderKey) {
+  dismissSync();
   ScratchDump.currentFolderKey = folderKey;
   ScratchDump.currentPageIdx = 0;
   ScratchDump.folderCache = { key: '', data: null };
   History.ensureFolder(folderKey);
-  const fd = await getFolderData(folderKey);
-  await setEditorHTML(fd.pages[0] || '');
-  updatePageUI(fd);
+  try {
+    const fd = await getFolderData(folderKey);
+    await setEditorHTML(fd.pages[0] || '');
+    updatePageUI(fd);
+  } catch (err) {
+    markLoadFailure(err, () => loadFolder(folderKey));
+    return;
+  }
+  clearLoadFailure();
   updateUndoButtons();
   editor.focus();
 }
 
 async function loadPage(idx) {
+  dismissSync();
   await flushSave();
-  const fd = await getFolderData(ScratchDump.currentFolderKey);
-  ScratchDump.currentPageIdx = idx;
-  await setEditorHTML(fd.pages[idx] || '');
-  updatePageUI(fd);
+  try {
+    const fd = await getFolderData(ScratchDump.currentFolderKey);
+    ScratchDump.currentPageIdx = idx;
+    await setEditorHTML(fd.pages[idx] || '');
+    updatePageUI(fd);
+  } catch (err) {
+    markLoadFailure(err, () => loadPage(idx));
+    return;
+  }
+  clearLoadFailure();
   updateUndoButtons();
   editor.focus();
 }
@@ -405,6 +633,101 @@ function updatePageUI(fd) {
   prevPageBtn.classList.toggle('hidden', ScratchDump.currentPageIdx === 0);
   nextPageBtn.classList.toggle('hidden', ScratchDump.currentPageIdx >= total - 1);
 }
+
+// ─── CROSS-TAB SYNC ──────────────────────────────────────────────────────────
+// Another panel wrote the folder this one is showing. With nothing unsaved
+// here, adopt their version silently. With local edits pending, say so instead
+// of silently picking a winner.
+
+let pendingExternal = null;   // newest version seen from another tab while dirty
+
+async function handleExternalFolderChange(folderKey, folderData) {
+  if (folderKey !== ScratchDump.currentFolderKey) return;
+
+  // The folder was deleted in another tab.
+  if (!folderData || !Array.isArray(folderData.pages)) {
+    if (hasUnsavedEdits()) { pendingExternal = null; showSyncNotice(true); return; }
+    const siteKey = 'site:' + ScratchDump.hostname;
+    if (folderKey !== siteKey) {
+      await switchFolder(siteKey, prettyName(ScratchDump.hostname));
+    }
+    return;
+  }
+
+  if (hasUnsavedEdits()) {
+    pendingExternal = folderData;   // offer it, don't force it
+    showSyncNotice(false);
+    return;
+  }
+
+  await adoptFolderData(folderData);
+}
+
+/** Render a folder version that came from another tab. Saves nothing. */
+async function adoptFolderData(fd) {
+  const idx = Math.min(ScratchDump.currentPageIdx, Math.max(0, fd.pages.length - 1));
+  ScratchDump.currentPageIdx = idx;
+  await setEditorHTML(fd.pages[idx] || '');   // pushed onto the undo stack
+  updatePageUI(fd);
+  updateUndoButtons();
+}
+
+function showSyncNotice(deleted) {
+  clearSyncNotice();
+
+  const el = document.createElement('div');
+  el.id = 'syncNotice';
+
+  const msg = document.createElement('span');
+  msg.className = 'sync-msg';
+  msg.textContent = deleted ? 'Deleted in another tab.' : 'Changed in another tab.';
+  el.appendChild(msg);
+
+  if (!deleted && pendingExternal) {
+    const load = document.createElement('button');
+    load.className = 'sync-action';
+    load.textContent = 'Load theirs';
+    load.title = 'Discard the edits made here and load the other tab’s version';
+    load.addEventListener('click', async () => {
+      const fd = pendingExternal;
+      clearTimeout(saveTimer);
+      saveTimer = null;
+      dirty = false;
+      dismissSync();
+      if (fd) await adoptFolderData(fd);
+    });
+    el.appendChild(load);
+  }
+
+  const keep = document.createElement('button');
+  keep.className = 'sync-action';
+  keep.textContent = deleted ? 'Dismiss' : 'Keep mine';
+  keep.title = deleted
+    ? 'Dismiss this message'
+    : 'Write this tab’s version now, replacing theirs';
+  keep.addEventListener('click', () => {
+    dismissSync();
+    // Assert the choice rather than wait for the next keystroke. Dismissing
+    // alone left the other tab's version on disk for anyone who stopped typing
+    // here — the opposite of what the button offers.
+    if (!deleted) { dirty = true; flushSave(); }
+  });
+  el.appendChild(keep);
+
+  noticeStack().appendChild(el);
+}
+
+function clearSyncNotice() {
+  const el = document.getElementById('syncNotice');
+  if (el) el.remove();
+}
+
+function dismissSync() {
+  pendingExternal = null;
+  clearSyncNotice();
+}
+
+ScratchDump.onExternalChange = handleExternalFolderChange;
 
 // ─── PAGE NAVIGATION ─────────────────────────────────────────────────────────
 
@@ -523,10 +846,30 @@ async function switchFolder(key, displayName) {
 
 async function deleteScratch(key, name) {
   showConfirm(`Delete "${name}"? This cannot be undone.`, async () => {
+    // Settle the save chain before removing anything. A debounced save still
+    // pending, or a write already travelling, lands after the delete and puts
+    // the key straight back — pointing at blobs the cleanup below just
+    // reclaimed.
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    if (ScratchDump.currentFolderKey === key) dirty = false;
+    await savePending;
+
+    // Note which blobs this scratch referenced before the note itself goes.
+    // Read past the cache so the current folder's cached copy is left alone.
+    const raw = await storageGet([key]);
+    const doomed = ((raw[key] && raw[key].pages) || []).flatMap(extractImageIds);
+
     let list = await getScratchList();
     list = list.filter(s => s.key !== key);
     await saveScratchList(list);
     await removeStorageKey(key);
+
+    // The note is gone from storage, so any id still referenced belongs to
+    // another note and is left alone.
+    releaseUnreferencedImages(doomed).catch(err =>
+      console.warn('ScratchDump: image cleanup failed', err));
+
     if (ScratchDump.currentFolderKey === key) {
       const siteKey = 'site:' + ScratchDump.hostname;
       await switchFolder(siteKey, prettyName(ScratchDump.hostname));
@@ -670,10 +1013,19 @@ function clearSTTOverlay() {
   if (overlay) overlay.remove();
 }
 
+/** Stop dictation and put the button back. Safe to call when not recording. */
+function stopDictation() {
+  if (!STT.isListening) return;
+  STT.stop();
+  sttBtn.classList.remove('recording');
+  clearSTTOverlay();
+}
+
 // ─── CLOSE ───────────────────────────────────────────────────────────────────
 
 closeBtn.addEventListener('click', () => {
-  window.parent.postMessage({ source: 'scratchpad', type: 'close' }, '*');
+  stopDictation();
+  postToHost('close');
 });
 
 // ─── SETTINGS UI ─────────────────────────────────────────────────────────────
@@ -688,7 +1040,7 @@ closeSettings.addEventListener('click', () => settingsPanel.classList.add('hidde
 document.getElementById('fixedSizeCheck').addEventListener('change', () => {
   ScratchDump.settings.fixedSize = document.getElementById('fixedSizeCheck').checked;
   saveSettings();
-  window.parent.postMessage({ source: 'scratchpad', type: 'setFixedSize', payload: ScratchDump.settings.fixedSize }, '*');
+  postToHost('setFixedSize', ScratchDump.settings.fixedSize);
 });
 
 document.getElementById('opacityInput').addEventListener('input', () => {
@@ -696,7 +1048,7 @@ document.getElementById('opacityInput').addEventListener('input', () => {
   v = Math.max(40, Math.min(100, v));
   ScratchDump.settings.opacity = v;
   saveSettings();
-  window.parent.postMessage({ source: 'scratchpad', type: 'setOpacity', payload: v }, '*');
+  postToHost('setOpacity', v);
 });
 
 document.getElementById('textSizeInput').addEventListener('input', () => {

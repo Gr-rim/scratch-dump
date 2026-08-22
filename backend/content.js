@@ -12,8 +12,9 @@
   // Compute extension origin once for secure postMessage
   const extOrigin = new URL(chrome.runtime.getURL('')).origin;
 
-  // Register message listener immediately — before iframe even loads
-  // so we never miss the early getHostname request from panel.js
+  // The panel gets its identity from the service worker, not from here, so
+  // nothing on this side races the iframe's load any more. What is left is
+  // panel chrome: close, opacity, size lock.
   window.addEventListener('message', onIframeMessage);
 
   // ── BUILD PANEL ────────────────────────────────────────────────────────────
@@ -130,20 +131,6 @@
       fixedSize = !!payload;
       const h = document.getElementById('__scratchdump_resize__');
       if (h) h.style.cursor = fixedSize ? 'default' : 'nesw-resize';
-    } else if (type === 'getHostname') {
-      sendHostname();
-    }
-  }
-
-  function sendHostname() {
-    if (panelIframe && panelIframe.contentWindow) {
-      try {
-        panelIframe.contentWindow.postMessage({
-          source: 'scratchpad-host',
-          type: 'hostname',
-          payload: window.location.hostname
-        }, extOrigin);
-      } catch { /* iframe not yet navigated to extension origin — retry will succeed */ }
     }
   }
 
@@ -152,14 +139,22 @@
     if (!panelContainer) createPanel();
     panelContainer.style.display = 'block';
     isVisible = true;
-    // Send hostname — both immediately and after a delay as fallback
-    sendHostname();
-    setTimeout(sendHostname, 400);
   }
 
   function hidePanel() {
     if (panelContainer) panelContainer.style.display = 'none';
     isVisible = false;
+    // The iframe survives being hidden, and so does anything running in it.
+    // Tell the panel, so it can stop the microphone rather than leave the tab's
+    // recording indicator lit behind a panel the user thinks they closed.
+    notifyPanel('panelHidden');
+  }
+
+  function notifyPanel(type) {
+    if (!panelIframe || !panelIframe.contentWindow) return;
+    try {
+      panelIframe.contentWindow.postMessage({ source: 'scratchpad-host', type }, extOrigin);
+    } catch { /* iframe not on the extension origin yet */ }
   }
 
   // ── RUNTIME ─────────────────────────────────────────────────────────────────
