@@ -979,3 +979,50 @@ input[type="checkbox"] {
 .ocr-btn:hover:not(:disabled) { background: var(--btn-hover); }
 .ocr-btn:disabled { opacity: 0.5; cursor: default; }
 .ocr-btn.is-danger { color: var(--danger); }
+
+/* ─── FOLDER TRANSFER ─────────────────────────────────────────────────────── */
+
+.xfer-btns { display: flex; gap: 6px; }
+
+/* Confirmation before an import overwrites a folder. Deliberately a blocking
+   dialog rather than a toast: this is the one action here that destroys work,
+   and it should cost a deliberate click. */
+.xfer-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.xfer-card {
+  width: 100%;
+  max-width: 300px;
+  padding: 18px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+}
+
+.xfer-card h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.xfer-card p {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text2);
+}
+
+.xfer-card .is-loss { color: var(--danger); }
+
+.xfer-actions { display: flex; gap: 8px; justify-content: flex-end; }

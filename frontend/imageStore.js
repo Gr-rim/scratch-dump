@@ -88,6 +88,28 @@ async function imgStorePut(dataUrl) {
 }
 
 /**
+ * Store an image data URL under an id chosen by the caller.
+ *
+ * imgStorePut() always mints a fresh UUID, which is right for a paste and wrong
+ * for an import: an imported folder carries ids its pages already reference, so
+ * reusing them is what makes importing the same file twice idempotent instead
+ * of duplicating every blob and orphaning the last set.
+ *
+ * @param {string} id — a UUID that came from an export
+ * @param {string} dataUrl
+ * @returns {Promise<string>} the same id
+ */
+async function imgStorePutWithId(id, dataUrl) {
+  const db = await getImageDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IMG_STORE, 'readwrite');
+    tx.objectStore(IMG_STORE).put(dataUrl, id);
+    tx.oncomplete = () => resolve(id);
+    tx.onerror    = () => reject(tx.error);
+  });
+}
+
+/**
  * Retrieve an image data URL by its key.
  * @param {string} id
  * @returns {Promise<string|null>} — the data URL, or null if missing

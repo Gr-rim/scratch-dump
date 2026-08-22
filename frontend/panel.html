@@ -84,6 +84,17 @@
       </select>
     </label>
     <div class="setting-row ocr-row">
+      <span>Move to Phone</span>
+      <div class="ocr-controls">
+        <div class="xfer-btns">
+          <button id="exportBtn" class="ocr-btn">Export</button>
+          <button id="importBtn" class="ocr-btn">Import</button>
+        </div>
+        <span id="xferStatus" class="ocr-status">Save this folder to a file, or open one.</span>
+      </div>
+      <input id="importFile" type="file" accept=".scratch,application/octet-stream" hidden />
+    </div>
+    <div class="setting-row ocr-row">
       <span>Text in Images</span>
       <div class="ocr-controls">
         <button id="ocrActionBtn" class="ocr-btn">Download</button>
@@ -202,6 +213,8 @@
   <script src="imageStore.js"></script>
   <script src="noteStorage.js"></script>
   <script src="ocr.js"></script>
+  <script src="wireFormat.js"></script>
+  <script src="transfer.js"></script>
   <script src="settings.js"></script>
   <script src="historyManager.js"></script>
   <script src="stt.js"></script>

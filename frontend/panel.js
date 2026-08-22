@@ -1107,6 +1107,7 @@ document.getElementById('sttLangSelect').addEventListener('change', () => {
   // After initStorage(), so the row can read whether the language data is
   // actually there rather than guessing.
   initOcrSettings();
+  initTransferSettings();
   updateUndoButtons();
 })();
 

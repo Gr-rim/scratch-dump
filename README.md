@@ -43,6 +43,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...)
 - 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
 - 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
+- 📤 **Move folders to your phone** — export a folder (pages, images and recognized text) to a single file, and open it in the [scratch-bump](https://github.com/Gr-rim/scratch-dump) mobile app. No account, no server, no network
 - 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
 - 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
 - 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
@@ -133,6 +134,14 @@ This means:
 - ✅ Uninstalling the extension removes all data
 
 The panel makes no network requests at all, with exactly one opt-in exception: enabling **Text in Images** downloads a language file once (see below). Leave that off and the extension never touches the network. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
+
+### Moving Folders
+
+Settings → **Move to Phone** exports the folder you are looking at to a `.scratch` file — a gzipped bundle of its pages, every image they reference, and any recognized text. **Import** reads one back.
+
+An import **replaces** the folder it names rather than merging into it. If that folder already exists here, you are told how many pages will be overwritten before anything is written, and nothing is applied until you confirm. A file that turns out to be damaged leaves your notes untouched — imports apply in one step at the end or not at all.
+
+The mobile side is a separate installable web app, [scratch-bump](https://github.com/Gr-rim/scratch-dump). On Android it registers as a share target, so a `.scratch` file opens straight into it.
 
 ### Text in Images
 
@@ -247,6 +256,8 @@ scratch-dump/
 │   ├── noteStorage.js          # chrome.storage CRUD, scratch list, cross-tab sync
 │   ├── settings.js             # Settings persistence + application
 │   ├── historyManager.js       # Per-page undo/redo stack (pure data structure)
+│   ├── wireFormat.js           # The .scratch file format — pure, and copied verbatim into the mobile app
+│   ├── transfer.js             # Folder export/import — the only side that touches storage
 │   ├── ocr.js                  # Recognition — language data install/delete, job queue, worker lifecycle
 │   ├── ocrWorker.js            # Preprocessing worker — upscale + binarize (started as a Worker, not a script tag)
 │   ├── stt.js                  # Web Speech API wrapper, Brave-aware
@@ -269,7 +280,7 @@ scratch-dump/
 ```
 
 **Load order** (in `panel.html`):
-`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
+`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `wireFormat.js` → `transfer.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
 
 All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build. The one third-party dependency is the vendored Tesseract engine under `vendor/`, committed as-is and never fetched at runtime.
 
@@ -280,6 +291,8 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 - [ ] Export notes as `.md` or `.txt`
 - [x] Dictated notes (Voice-to-notes) — Chrome, Edge and Opera
 - [x] Text in images (OCR) — opt-in, runs locally
+- [x] Move folders between desktop and phone — file based, no server
+- [ ] Live pairing over the local network (QR + WebRTC)
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
