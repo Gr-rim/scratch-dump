@@ -845,7 +845,7 @@ async function switchFolder(key, displayName) {
 }
 
 async function deleteScratch(key, name) {
-  showConfirm(`Delete "${name}"? This cannot be undone.`, async () => {
+  showConfirm('Delete Scratch Space?', `Delete "${name}"? This cannot be undone.`, async () => {
     // Settle the save chain before removing anything. A debounced save still
     // pending, or a write already travelling, lands after the delete and puts
     // the key straight back — pointing at blobs the cleanup below just
@@ -902,7 +902,8 @@ async function createScratch() {
 }
 
 let confirmCallback = null;
-function showConfirm(msg, cb) {
+function showConfirm(title, msg, cb) {
+  document.getElementById('confirmTitle').textContent = title;
   document.getElementById('confirmMsg').textContent = msg;
   confirmCallback = cb;
   confirmDialog.classList.remove('hidden');

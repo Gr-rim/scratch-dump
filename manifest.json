@@ -35,7 +35,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["frontend/panel.html", "frontend/panel.js", "frontend/panel.css", "icons/*"],
+      "resources": ["frontend/panel.html"],
       "matches": ["<all_urls>"]
     }
   ]

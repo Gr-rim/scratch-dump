@@ -85,14 +85,28 @@
       active = true;
       startX = e.clientX;
       startY = e.clientY;
-      startW = container.offsetWidth;
       startH = container.offsetHeight;
-      // Anchor the RIGHT edge position so panel grows leftward
+
+      // Anchor the RIGHT edge so the panel grows leftward from the grip.
+      //
+      // Measure against documentElement.clientWidth, not window.innerWidth.
+      // innerWidth counts the vertical scrollbar, while the `right` offset of
+      // a fixed element resolves against the viewport without it. Mixing the
+      // two wrote a value one scrollbar-width too large, so the right edge
+      // jumped inward the moment the grip was pressed — the twitch this
+      // anchoring exists to prevent. Rounding matters for the same reason:
+      // rect.right is fractional under browser zoom or a fractional DPI
+      // scale, and the leftover sub-pixel would nudge the edge again.
       const rect = container.getBoundingClientRect();
-      startRight = window.innerWidth - rect.right;
-      // Switch to right-anchored so left edge is free
+      startRight = Math.round(document.documentElement.clientWidth - rect.right);
+
+      // Switch to right-anchored so the left edge is free to move.
       container.style.left = 'auto';
       container.style.right = startRight + 'px';
+
+      // Read the width only after the anchor swap, so the drag maths starts
+      // from the value the layout has actually settled on.
+      startW = container.offsetWidth;
 
       panelIframe.style.pointerEvents = 'none';
       resizeOverlay.style.display = 'block';

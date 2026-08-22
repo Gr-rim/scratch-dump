@@ -13,8 +13,8 @@
   <!-- CONFIRM DIALOG -->
   <div id="confirmDialog" class="dialog-overlay hidden">
     <div class="dialog-box">
-      <div class="dialog-title">Delete Page?</div>
-      <div class="dialog-msg" id="confirmMsg">This page will be permanently deleted.</div>
+      <div class="dialog-title" id="confirmTitle">Delete?</div>
+      <div class="dialog-msg" id="confirmMsg">This will be permanently deleted.</div>
       <div class="dialog-actions">
         <button id="confirmCancel" class="btn-secondary">Cancel</button>
         <button id="confirmOk" class="btn-danger">Delete</button>
@@ -92,14 +92,14 @@
     <!-- TOP BAR -->
     <div class="top-bar">
       <div class="top-left">
-        <button class="icon-btn" id="undoBtn" title="Undo">
+        <button class="icon-btn" id="undoBtn" title="Undo" aria-label="Undo">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 14 4 9l5-5" />
             <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
           </svg>
         </button>
-        <button class="icon-btn" id="redoBtn" title="Redo">
+        <button class="icon-btn" id="redoBtn" title="Redo" aria-label="Redo">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="m15 14 5-5-5-5" />
@@ -110,7 +110,7 @@
       <div class="top-center">
         <span class="site-name" id="siteName">Scratchpad</span>
         <div class="dropdown-wrap" id="folderDropdownWrap">
-          <button class="dropdown-chevron" id="folderChevron" title="Switch folder">
+          <button class="dropdown-chevron" id="folderChevron" title="Switch folder" aria-label="Switch folder">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
               stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9" />
@@ -120,14 +120,14 @@
         </div>
       </div>
       <div class="top-right">
-        <button class="icon-btn" id="copyBtn" title="Copy">
+        <button class="icon-btn" id="copyBtn" title="Copy" aria-label="Copy">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" />
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
         </button>
-        <button class="icon-btn" id="pasteBtn" title="Paste">
+        <button class="icon-btn" id="pasteBtn" title="Paste" aria-label="Paste">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
@@ -147,30 +147,30 @@
     <!-- BOTTOM BAR -->
     <div class="bottom-bar">
       <div class="bottom-left">
-        <button class="fmt-btn" id="fszDown" title="Decrease font size">A−</button>
-        <button class="fmt-btn" id="fszUp" title="Increase font size">A+</button>
-        <button class="fmt-btn" id="boldBtn" title="Bold"><b>B</b></button>
-        <button class="fmt-btn" id="underlineBtn" title="Underline"><u>U</u></button>
-        <button class="fmt-btn" id="italicBtn" title="Italic"><i>I</i></button>
+        <button class="fmt-btn" id="fszDown" title="Decrease font size" aria-label="Decrease font size">A−</button>
+        <button class="fmt-btn" id="fszUp" title="Increase font size" aria-label="Increase font size">A+</button>
+        <button class="fmt-btn" id="boldBtn" title="Bold" aria-label="Bold"><b>B</b></button>
+        <button class="fmt-btn" id="underlineBtn" title="Underline" aria-label="Underline"><u>U</u></button>
+        <button class="fmt-btn" id="italicBtn" title="Italic" aria-label="Italic"><i>I</i></button>
       </div>
       <div class="bottom-center">
-        <button class="page-nav-btn hidden" id="prevPageBtn" title="Previous page">
+        <button class="page-nav-btn hidden" id="prevPageBtn" title="Previous page" aria-label="Previous page">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
         <span class="page-indicator" id="pageIndicator">Pg. 1</span>
-        <button class="page-nav-btn hidden" id="nextPageBtn" title="Next page">
+        <button class="page-nav-btn hidden" id="nextPageBtn" title="Next page" aria-label="Next page">
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
             stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
-        <button class="add-page-btn" id="addPageBtn" title="Add page">+</button>
+        <button class="add-page-btn" id="addPageBtn" title="Add page" aria-label="Add page">+</button>
       </div>
       <div class="bottom-right">
-        <button class="icon-btn" id="sttBtn" title="Voice input">
+        <button class="icon-btn" id="sttBtn" title="Voice input" aria-label="Voice input">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="1" width="6" height="12" rx="3" />
@@ -179,7 +179,7 @@
             <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
         </button>
-        <button class="icon-btn" id="settingsBtn" title="Settings">
+        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
             stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" />
