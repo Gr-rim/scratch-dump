@@ -43,7 +43,10 @@
       border: 'none', borderRadius: '12px',
       display: 'block', background: 'transparent',
     });
-    panelIframe.allow = 'clipboard-read; clipboard-write; microphone';
+    // web-share lets the panel hand an exported folder straight to the OS share
+    // sheet. Without it navigator.share() throws in here — the Web Share API is
+    // gated by permission policy, and an iframe is not granted it by default.
+    panelIframe.allow = 'clipboard-read; clipboard-write; microphone; web-share';
 
     // Resize grip — BOTTOM LEFT corner
     const resizeHandle = document.createElement('div');

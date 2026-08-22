@@ -280,10 +280,18 @@ function initTransferSettings() {
         if (pct < 100) _xferSay('Packing… ' + pct + '%');
       });
 
-      downloadBlob(blob, filename);
       const imgs = Object.keys(obj.images).length;
-      _xferSay('Saved ' + filename + ' — ' + _fmtSize(blob.size)
-        + (imgs ? ', ' + imgs + (imgs === 1 ? ' image' : ' images') : ''));
+      const detail = _fmtSize(blob.size)
+        + (imgs ? ', ' + imgs + (imgs === 1 ? ' image' : ' images') : '');
+
+      const how = await shareOrDownload(blob, filename);
+      if (how === 'shared') {
+        _xferSay('Sent ' + filename + ' — ' + detail);
+      } else if (how === 'cancelled') {
+        _xferSay('Not sent.');
+      } else {
+        _xferSay('Saved ' + filename + ' — ' + detail);
+      }
     } catch (e) {
       _xferSay(String((e && e.message) || e), true);
     } finally {

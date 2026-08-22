@@ -83,6 +83,41 @@ function downloadBlob(blob, filename) {
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
 }
 
+/**
+ * Hand the export to the OS share sheet if this platform has one, and fall back
+ * to a download if it does not.
+ *
+ * Worth trying because on Windows and macOS the sheet contains the routes that
+ * actually get a file onto a phone — Nearby Share, Phone Link, AirDrop — which
+ * collapses "export it, find it in Downloads, move it across somehow" into one
+ * step. Support is genuinely patchy though (no file sharing on Linux Chrome,
+ * none in Firefox), so the download is the base case and this is the shortcut.
+ *
+ * Needs allow="web-share" on the panel iframe: the API is permission-policy
+ * gated and an iframe is not granted it by default. See backend/content.js.
+ *
+ * @param {Blob} blob @param {string} filename
+ * @returns {Promise<'shared'|'cancelled'|'downloaded'>}
+ */
+async function shareOrDownload(blob, filename) {
+  const file = new File([blob], filename, { type: 'application/octet-stream' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: filename });
+      return 'shared';
+    } catch (e) {
+      // Dismissing the sheet is a decision, not a failure — do not then drop a
+      // file into Downloads that the user just declined to send.
+      if (e && e.name === 'AbortError') return 'cancelled';
+      // Anything else (no target app, policy refusal) falls through.
+    }
+  }
+
+  downloadBlob(blob, filename);
+  return 'downloaded';
+}
+
 // ─── IMPORT ──────────────────────────────────────────────────────────────────
 
 /**
