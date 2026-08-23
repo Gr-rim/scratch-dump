@@ -45,37 +45,66 @@ function syncNormalizeAddress(raw) {
 }
 
 /**
- * Ask for permission to reach exactly this one address.
+ * The match pattern covering one peer.
  *
- * Declared optional and requested narrow on purpose. Chrome match patterns
- * cannot express an IP range, so the only static alternative would be
- * `http://*` for every install — a permission to reach the entire web, granted
- * to everyone including people who never sync. This way a user who never pairs
- * is never asked, and the grant covers one device.
+ * Deliberately not `new URL(address).origin` — an origin carries the port,
+ * and a Chrome match pattern has no port component at all. Including one makes
+ * the pattern invalid, and an invalid pattern grants nothing while looking
+ * like it might have. The host is the unit of permission and already covers
+ * every port on it.
  *
- * Must be called from a user gesture.
  * @param {string} address
- * @returns {Promise<boolean>}
+ * @returns {string|null}
  */
-function syncRequestPermission(address) {
-  let origin;
-  try { origin = new URL(address).origin + '/*'; }
-  catch { return Promise.resolve(false); }
+function syncOriginPattern(address) {
+  try {
+    const u = new URL(address);
+    return u.protocol + '//' + u.hostname + '/*';
+  } catch { return null; }
+}
 
+/** Whether the permission for this peer is currently held. */
+function syncHasPermission(address) {
+  const origin = syncOriginPattern(address);
+  if (!origin) return Promise.resolve(false);
   return new Promise((resolve) => {
     try {
-      chrome.permissions.request({ origins: [origin] }, (granted) => {
+      chrome.permissions.contains({ origins: [origin] }, (has) => {
         if (chrome.runtime.lastError) { resolve(false); return; }
-        resolve(!!granted);
+        resolve(!!has);
       });
     } catch { resolve(false); }
   });
 }
 
-function syncDropPermission(address) {
+function syncRequestPermission(address) {
+  const origin = syncOriginPattern(address);
+  if (!origin) return Promise.resolve(false);
+
   return new Promise((resolve) => {
-    let origin;
-    try { origin = new URL(address).origin + '/*'; } catch { resolve(); return; }
+    try {
+      chrome.permissions.request({ origins: [origin] }, (granted) => {
+        // An invalid pattern reports here rather than throwing, which is how
+        // the port bug looked like a network failure instead of a rejected
+        // request. Worth surfacing rather than folding into a bare false.
+        const err = chrome.runtime.lastError;
+        if (err) {
+          console.warn('ScratchDump: permission request refused —', err.message, origin);
+          resolve(false); return;
+        }
+        resolve(!!granted);
+      });
+    } catch (e) {
+      console.warn('ScratchDump: permission request threw —', e, origin);
+      resolve(false);
+    }
+  });
+}
+
+function syncDropPermission(address) {
+  const origin = syncOriginPattern(address);
+  return new Promise((resolve) => {
+    if (!origin) { resolve(); return; }
     try {
       chrome.permissions.remove({ origins: [origin] }, () => { void chrome.runtime.lastError; resolve(); });
     } catch { resolve(); }
@@ -114,6 +143,13 @@ async function _fetchJson(url, init) {
  * @returns {Promise<{device:string}>}
  */
 async function syncConnect(address, code) {
+  // A fetch blocked for want of permission fails identically to one that
+  // found nothing listening — same TypeError, same message. Checking first is
+  // what makes the two distinguishable, and they need entirely different
+  // things from the user.
+  if (!(await syncHasPermission(address))) {
+    throw new Error('ScratchDump is not allowed to reach ' + address.replace(/^https?:\/\//, '') + '. Pair again to grant it.');
+  }
   const { status, body } = await _fetchJson(address + '/hello', { method: 'GET' });
   if (status !== 200 || !body) throw new Error("That address answered, but it isn't ScratchDump.");
 
@@ -170,7 +206,14 @@ async function syncPair(rawAddress, code) {
   if (!syncNormalizeCode(code)) throw new Error('Enter the pairing code shown on your phone.');
 
   const granted = await syncRequestPermission(address);
-  if (!granted) throw new Error('ScratchDump needs permission to reach that address.');
+  if (!granted) {
+    throw new Error('Permission to reach ' + address.replace(/^https?:\/\//, '') + ' was not granted.');
+  }
+  // Asked and answered are not the same thing. Confirming closes the gap
+  // where a pattern is accepted but grants nothing.
+  if (!(await syncHasPermission(address))) {
+    throw new Error('Chrome reported that address as granted but is not honouring it. Check it looks like 192.168.1.42:8765.');
+  }
 
   const { device } = await syncConnect(address, code);
   await storageSet({ [SYNC_STORE_KEY]: { address, code, device, pairedAt: Date.now() } });
