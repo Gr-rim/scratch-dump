@@ -3,6 +3,9 @@
 # change these files and break any such check.
 vendor/** -text
 
-# The wire format is duplicated in the mobile client and the two copies are
-# compared by hash. EOL conversion would make identical files differ.
-frontend/wireFormat.js text eol=lf
+# The wire format and the sync protocol are duplicated in the mobile client and
+# the copies are compared by hash. EOL conversion would make identical files
+# differ — on Windows, with autocrlf on, a fresh clone would fail check-format
+# on files nobody had touched.
+frontend/wireFormat.js   text eol=lf
+frontend/syncProtocol.js text eol=lf

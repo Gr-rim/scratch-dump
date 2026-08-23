@@ -26,8 +26,14 @@ npm-debug.log*
 .env
 .env.local
 
-# Mobile client PWA — its own project, deployed to GitHub Pages separately
+# Mobile client — its own project, with its own repository. Deployed to
+# GitHub Pages as a web app and built separately as an Android app.
 scratch-bump/
+
+# Working copies of the mobile client, folded into scratch-bump/ in 1.1.8.
+# Listed so a future scratch copy cannot be committed here by accident.
+new_changes/
+scratch-bump-updated/
 
 # Throwaway network spike — not part of the extension
 spike/

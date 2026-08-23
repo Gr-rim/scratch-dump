@@ -113,28 +113,45 @@ function syncDropPermission(address) {
 
 // ─── TRANSPORT ───────────────────────────────────────────────────────────────
 
-function _timeout(ms) {
-  const c = new AbortController();
-  const t = setTimeout(() => c.abort(), ms);
-  return { signal: c.signal, done: () => clearTimeout(t) };
-}
-
 /**
  * A fetch failure here is almost always "the phone is not there", which is an
  * ordinary state rather than an error — the app closed, the phone slept, it
  * left the network. Say that, rather than surfacing a TypeError.
+ *
+ * The request itself is made by the service worker, not here. This page is a
+ * chrome-extension:// document and therefore a secure context, so Chrome reads
+ * a plain-http request out of it as mixed content and upgrades it to https.
+ * The phone has no TLS, so the upgraded request fails in the handshake and
+ * arrives back as an unreachable address. background.js is not a document and
+ * is not subject to that upgrade. See `syncFetch` there.
  */
 async function _fetchJson(url, init) {
-  const to = _timeout(SYNC_TIMEOUT_MS);
+  let res;
   try {
-    const res = await fetch(url, { ...init, signal: to.signal, cache: 'no-store' });
-    return { status: res.status, body: await res.json().catch(() => null) };
+    res = await chrome.runtime.sendMessage({
+      action: 'syncFetch',
+      url,
+      init: {
+        method: (init && init.method) || 'GET',
+        headers: (init && init.headers) || undefined,
+        body: (init && init.body) || undefined,
+      },
+      timeoutMs: SYNC_TIMEOUT_MS,
+    });
   } catch (e) {
-    if (e && e.name === 'AbortError') throw new Error('The phone stopped responding. Is it still on the same Wi-Fi?');
-    throw new Error("Can't reach that address. Check the phone is on the same Wi-Fi and sync is switched on.");
-  } finally {
-    to.done();
+    // The worker was asleep or the channel closed under us. Not the phone's
+    // fault, and not something the usual Wi-Fi advice fits.
+    throw new Error('The extension could not run the request. Reload the extension and try again.');
   }
+
+  if (!res) throw new Error('The extension could not run the request. Reload the extension and try again.');
+
+  if (!res.ok) {
+    if (res.kind === 'timeout') throw new Error('The phone stopped responding. Is it still on the same Wi-Fi?');
+    throw new Error("Can't reach that address. Check the phone is on the same Wi-Fi and sync is switched on.");
+  }
+
+  return { status: res.status, body: res.body };
 }
 
 /**

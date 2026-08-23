@@ -14,7 +14,7 @@
 
 *Per-site notes. Local storage. No accounts. No cloud. No nonsense.*
 
-[![Version](https://img.shields.io/badge/Version-1.1.5-blue?style=flat-square)]()
+[![Version](https://img.shields.io/badge/Version-1.1.8-blue?style=flat-square)]()
 [![Chrome](https://img.shields.io/badge/Chrome-Works-4285F4?style=flat-square&logo=google-chrome&logoColor=white)](https://github.com)
 [![Brave](https://img.shields.io/badge/Brave-Works-FB542B?style=flat-square&logo=brave&logoColor=white)](https://github.com)
 [![Edge](https://img.shields.io/badge/Edge-Works-0078D7?style=flat-square&logo=microsoft-edge&logoColor=white)](https://github.com)
@@ -44,6 +44,7 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
 - 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
 - 📤 **Move folders to your phone** — export a folder (pages, images and recognized text) to one file and hand it straight to your phone through the system share sheet. No account, no server, no sync service
+- 📶 **Sync over your own Wi-Fi** — pair with the phone app once and move folders either way with no file in between. Encrypted with a code you type, reaching one address you approved. Nothing leaves your network
 - 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
 - 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
 - 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
@@ -118,6 +119,8 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 | Settings | Gear icon (Bottom-right) |
 | Note changed in another tab | A notice appears above the editor — **Load theirs** or **Keep mine** |
 | Saving stopped working | A red banner appears above the editor with a **Retry** button |
+| Pair with your phone | Gear icon → **Sync with Phone** → **Pair**, then enter the address and code the phone shows |
+| Move a folder over Wi-Fi | Gear icon → **Sync with Phone** → **Sync…**, then **Get** or **Send** |
 | Delete Folder | Just remove everything from the folder |
 
 ---
@@ -133,7 +136,7 @@ This means:
 - ✅ No analytics, no ads, no third-party anything
 - ✅ Uninstalling the extension removes all data
 
-The panel makes no network requests at all, with exactly one opt-in exception: enabling **Text in Images** downloads a language file once (see below). Leave that off and the extension never touches the network. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
+The panel makes no network requests at all, with exactly two opt-in exceptions: enabling **Text in Images** downloads a language file once, and pairing with a phone lets the panel reach that one address on your own network (both below). Leave both off and the extension never touches the network. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
 
 ### Moving Folders
 
@@ -143,7 +146,21 @@ An import **replaces** the folder it names rather than merging into it. If that 
 
 Where the operating system offers a share sheet (Windows, macOS), Export opens it — so the file can go straight to your phone over Nearby Share, Phone Link or AirDrop without a trip through your Downloads folder. Where it does not (Linux, Firefox), Export saves the file and you move it yourself.
 
-The mobile side lives in `scratch-bump/`, a separate project with its own repository. It is a web app today and is being replaced by a standalone application — see **Roadmap**.
+The mobile side lives in `scratch-bump/`, a separate project with its own repository. It ships both as an installable web app and as an Android application; the web app is what GitHub Pages serves, and it is the only client on iOS.
+
+### Sync With Phone
+
+Settings → **Sync with Phone** moves the same folders over your own Wi-Fi, with no file in between. Pair once with an address and a code the phone shows, then **Get** a folder off it or **Send** the one you have open.
+
+**The phone is the server, and the extension is the client.** That is not a preference — a browser extension can make requests and cannot receive them, so the half that has to listen is the half on the phone. Sync therefore works only while the phone app has sync switched on, which is also what makes it *on-request* rather than a background service.
+
+**Encrypted with the code you typed.** The code and a salt from the phone derive an AES-GCM key through PBKDF2. Authentication falls out of that rather than being a separate mechanism: a peer with the wrong code produces a payload whose tag does not verify, so decryption fails. There is no password to compare and no token to leak into a log. Only the first request — `/hello`, which returns a version, a public salt and a device name — is unencrypted; everything after it, including *which method is being called*, is inside the envelope.
+
+**One address, granted at pairing.** Chrome match patterns cannot express an IP range, so there is no narrow static permission to ship. The extension asks for an optional host permission for the specific address you paired with, at the moment you pair, and hands it back when you unpair. Someone who never pairs is never asked for anything.
+
+**Arriving folders go through the same door as files.** A folder pulled from the phone is applied by exactly the code that applies one from a `.scratch` file — same overwrite warning, same all-or-nothing apply. Sync is a different transport, not a different import.
+
+The pairing code changes each time the phone's app restarts. When that happens the extension says so and asks you to re-pair, rather than failing as though the phone were unreachable.
 
 ### Text in Images
 
@@ -231,6 +248,22 @@ Image blobs are reachable only through `idb:<uuid>` refs inside note HTML, so de
 
 The sweep fails closed. It decides what to delete by reading every note, and an unreadable result is indistinguishable from a profile with no notes at all — which would condemn the entire store. So every read on that path rejects rather than returning something empty, and a storage failure aborts the sweep instead of reclaiming everything. Deleting a scratch space settles the save chain first, so a write still in flight cannot land afterwards and put the key back pointing at blobs that were just released.
 
+### Sync
+
+The extension is the client and never listens, because it cannot. That is the whole reason the phone runs a server, and every other decision here follows from it.
+
+`syncProtocol.js` is pure — no storage, no DOM, no `chrome.*`, no Node builtins — so the same file runs unchanged in the panel, in the phone app, and under Node. That is what lets one implementation of pairing and encryption be shared by three programs, and be tested with no phone in the room. It is copied verbatim into the mobile project, and a hash check there fails the build if the copies drift.
+
+Two endpoints. `GET /hello` is unauthenticated and returns a version, a salt and a device name — harmless to serve to anyone, since the salt is public by design and useless without the code. `POST /rpc` carries everything else inside an encrypted envelope, so the URL never reveals which method was called, let alone which folders exist.
+
+Authentication is not a separate mechanism. AES-GCM is authenticated encryption, so a peer with the wrong pairing code produces a payload whose tag does not verify and decryption fails. A `401` therefore means exactly one thing — the code is wrong or has rotated — which is why the panel can say so specifically instead of reporting a generic network failure.
+
+Reaching a private address is its own problem. Chrome match patterns have no port component and cannot express an IP range, so `new URL(address).origin` is the wrong thing to ask for: it carries the port, which makes the pattern invalid, and an invalid pattern grants nothing while looking like it might have. The host is the unit of permission. The panel requests the optional host permission at pairing time, confirms it was actually granted rather than merely accepted, and hands it back on unpair.
+
+A permission-blocked fetch and a phone that is not there fail identically — same `TypeError`, same message — so the permission is checked before connecting. The two need completely different things from the user, and they are worth telling apart.
+
+Folders arriving over the wire go through `transfer.js`, the same path a `.scratch` file takes, so sync inherits the overwrite warning and the atomic apply rather than reimplementing them.
+
 ### Fonts
 
 Roboto lives in `fonts/` and is declared with local `@font-face` rules, so nothing is fetched at runtime.
@@ -260,6 +293,8 @@ scratch-dump/
 │   ├── historyManager.js       # Per-page undo/redo stack (pure data structure)
 │   ├── wireFormat.js           # The .scratch file format — pure, and copied verbatim into the mobile app
 │   ├── transfer.js             # Folder export/import — the only side that touches storage
+│   ├── syncProtocol.js         # Pairing, key derivation, envelopes — pure, and copied verbatim into the mobile app
+│   ├── syncClient.js           # The extension's side of sync — calls the phone, never listens
 │   ├── ocr.js                  # Recognition — language data install/delete, job queue, worker lifecycle
 │   ├── ocrWorker.js            # Preprocessing worker — upscale + binarize (started as a Worker, not a script tag)
 │   ├── stt.js                  # Web Speech API wrapper, Brave-aware
@@ -282,7 +317,7 @@ scratch-dump/
 ```
 
 **Load order** (in `panel.html`):
-`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `wireFormat.js` → `transfer.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
+`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `wireFormat.js` → `transfer.js` → `syncProtocol.js` → `syncClient.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
 
 All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build. The one third-party dependency is the vendored Tesseract engine under `vendor/`, committed as-is and never fetched at runtime.
 
@@ -294,8 +329,8 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 - [x] Dictated notes (Voice-to-notes) — Chrome, Edge and Opera
 - [x] Text in images (OCR) — opt-in, runs locally
 - [x] Move folders between desktop and phone — file based, no server
-- [ ] Standalone mobile app, replacing the web client
-- [ ] On-request sync over the local network, with a persistent connection
+- [x] Standalone mobile app — Android, alongside the web client (still the only client on iOS)
+- [x] On-request sync over the local network — encrypted, paired per device
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
