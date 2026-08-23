@@ -84,6 +84,16 @@
       </select>
     </label>
     <div class="setting-row ocr-row">
+      <span>Sync with Phone</span>
+      <div class="ocr-controls">
+        <div class="xfer-btns">
+          <button id="syncPrimaryBtn" class="ocr-btn">Pair…</button>
+          <button id="syncUnpairBtn" class="ocr-btn is-danger" hidden>Unpair</button>
+        </div>
+        <span id="syncStatus" class="ocr-status">Not paired.</span>
+      </div>
+    </div>
+    <div class="setting-row ocr-row">
       <span>Move to Phone</span>
       <div class="ocr-controls">
         <div class="xfer-btns">
@@ -215,6 +225,8 @@
   <script src="ocr.js"></script>
   <script src="wireFormat.js"></script>
   <script src="transfer.js"></script>
+  <script src="syncProtocol.js"></script>
+  <script src="syncClient.js"></script>
   <script src="settings.js"></script>
   <script src="historyManager.js"></script>
   <script src="stt.js"></script>

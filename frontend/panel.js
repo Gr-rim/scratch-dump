@@ -1108,6 +1108,7 @@ document.getElementById('sttLangSelect').addEventListener('change', () => {
   // actually there rather than guessing.
   initOcrSettings();
   initTransferSettings();
+  initSyncSettings();
   updateUndoButtons();
 })();
 

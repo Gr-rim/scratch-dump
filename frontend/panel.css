@@ -1026,3 +1026,56 @@ input[type="checkbox"] {
 .xfer-card .is-loss { color: var(--danger); }
 
 .xfer-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ─── SYNC WITH PHONE ─────────────────────────────────────────────────────── */
+
+.sync-input {
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+.sync-send {
+  width: 100%;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+/* Capped rather than unbounded: a long list must not push the buttons off a
+   short panel, which is the one place the user needs to reach. */
+.sync-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+.sync-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg3);
+}
+
+.sync-row-main { flex: 1; min-width: 0; }
+
+.sync-row-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-row-meta { font-size: 11px; color: var(--text2); }

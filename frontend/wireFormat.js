@@ -208,3 +208,14 @@ function wireEstimateBytes(obj) {
   for (const id in obj.images) n += obj.images[id].length;
   return n;
 }
+
+// Loadable both as a plain script (extension panel, mobile client) and by Node,
+// which is what lets the reference server validate exports with this exact file
+// rather than a second implementation that could disagree with it.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    WIRE_FORMAT, WIRE_VERSION, WIRE_EXT,
+    wireImageIds, wirePack, wireValidate, wireMissingImages,
+    wireSerialize, wireDeserialize, wireFilename, wireEstimateBytes,
+  };
+}
