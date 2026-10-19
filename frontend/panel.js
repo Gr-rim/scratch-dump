@@ -341,6 +341,11 @@ function markLoadFailure(err, retry) {
     noticeStack().appendChild(el);
   }
   el.firstChild.textContent = 'Could not load these notes — ' + describeStorageError(err);
+  el.title = '';
+  // Only a page with no site offers a new scratch — see markNoSite(). A read
+  // that failed is a storage problem, and a new scratch would fail with it.
+  const offer = document.getElementById('newScratchBtn');
+  if (offer) offer.remove();
 }
 
 function clearLoadFailure() {
@@ -670,7 +675,7 @@ window.addEventListener('message', (e) => {
 // point this panel at another site's notes. No check separates the two; only a
 // source that cannot be forged does. A worker that does not answer therefore
 // locks the editor rather than falling back to one that can be.
-(async function resolveHost() {
+async function resolveHost() {
   let info = null;
   try {
     info = await chrome.runtime.sendMessage({ action: 'getHostInfo' });
@@ -688,11 +693,94 @@ window.addEventListener('message', (e) => {
     return;
   }
 
-  markLoadFailure(
-    new Error('this site could not be identified (' +
-      ((info && info.reason) || 'no answer from the service worker') + ')'),
-    resolveHost);
-})();
+  // A local file answers with no hostname at all. Nothing went wrong there —
+  // the page simply has no site — so it is told apart from a real failure to
+  // find out, which used to be reported for both.
+  if (info && info.ok) {
+    markNoSite('No site here to keep notes for.',
+      'This page has no web address (a local file, for one), so it has no site notes. A scratch space works anywhere.');
+  } else {
+    markNoSite("Couldn't tell which site this is.",
+      'The extension could not identify this page (' +
+      ((info && info.reason) || 'no answer from the service worker') + '). A scratch space works anywhere.');
+  }
+}
+
+// ─── NO SITE ─────────────────────────────────────────────────────────────────
+// Site notes cannot open on a page with no site, but a scratch space belongs to
+// no site at all. So the banner that locks the editor also offers one, beside
+// Retry, and the panel stays usable on local files.
+
+let noSite = null;   // { message, detail } once this panel is known to have no site
+
+/**
+ * Close whatever is open, lock the editor, and offer a new scratch space.
+ * @param {string} message — short; the banner is a single line
+ * @param {string} detail — the full reason, shown on hover
+ */
+function markNoSite(message, detail) {
+  noSite = { message, detail };
+
+  // Nothing is open from here on, so nothing can be saved over.
+  discardTyping();
+  ScratchDump.currentFolderKey = '';
+  ScratchDump.currentPageIdx = 0;
+  editor.innerHTML = '';
+  siteName.textContent = 'Scratchpad';
+  updatePageUI({ pages: [''] });
+
+  markLoadFailure(new Error(detail), resolveHost);
+  const el = document.getElementById('loadError');
+  el.firstChild.textContent = message;
+  el.title = detail;
+
+  const offer = document.createElement('button');
+  offer.id = 'newScratchBtn';
+  offer.className = 'sync-action';
+  offer.textContent = 'New scratch';
+  offer.title = 'Start a scratch space here — it needs no site';
+  offer.addEventListener('click', async () => {
+    offer.disabled = true;   // one click, one space
+    try {
+      await addScratch(await untitledName());
+    } catch (err) {
+      offer.disabled = false;
+      console.warn('ScratchDump: could not create a scratch space', err);
+      showSaveError(err);
+    }
+  });
+  el.appendChild(offer);
+}
+
+/**
+ * "Untitled", or "Untitled1", "Untitled2"… — the first that no scratch space
+ * is called yet. Compared without case, since "untitled" and "Untitled" side
+ * by side in the dropdown read as the same name.
+ */
+async function untitledName() {
+  const taken = new Set((await getScratchList()).map(s => String(s.name).toLowerCase()));
+  if (!taken.has('untitled')) return 'Untitled';
+  let n = 1;
+  while (taken.has('untitled' + n)) n++;
+  return 'Untitled' + n;
+}
+
+/**
+ * Back to this page's own notes after the open folder went away — or, on a
+ * page with no site, back to the banner. Switching to 'site:' + an empty host
+ * would open, and on the first keystroke create, a folder belonging to nothing.
+ */
+async function returnToSite() {
+  if (ScratchDump.hostname) {
+    await switchFolder('site:' + ScratchDump.hostname, prettyName(ScratchDump.hostname));
+  } else if (noSite) {
+    markNoSite(noSite.message, noSite.detail);
+  }
+}
+
+// Started only once everything above exists: a sendMessage that throws at once
+// reaches markNoSite() in this same turn, before a later `let` would be ready.
+resolveHost();
 
 // ─── LOAD FOLDER / PAGE ─────────────────────────────────────────────────────
 
@@ -754,10 +842,7 @@ async function handleExternalFolderChange(folderKey, folderData) {
   // The folder was deleted in another tab.
   if (!folderData || !Array.isArray(folderData.pages)) {
     if (hasUnsavedEdits()) { pendingExternal = null; showSyncNotice(true); return; }
-    const siteKey = 'site:' + ScratchDump.hostname;
-    if (folderKey !== siteKey) {
-      await switchFolder(siteKey, prettyName(ScratchDump.hostname));
-    }
+    if (folderKey !== 'site:' + ScratchDump.hostname) await returnToSite();
     return;
   }
 
@@ -1040,10 +1125,7 @@ async function deleteScratch(key, name) {
     releaseUnreferencedImages(doomed).catch(err =>
       console.warn('ScratchDump: image cleanup failed', err));
 
-    if (ScratchDump.currentFolderKey === key) {
-      const siteKey = 'site:' + ScratchDump.hostname;
-      await switchFolder(siteKey, prettyName(ScratchDump.hostname));
-    }
+    if (ScratchDump.currentFolderKey === key) await returnToSite();
   });
 }
 
@@ -1063,6 +1145,14 @@ async function createScratch() {
   const name = nameInput.value.trim();
   if (!name) { nameInput.focus(); return; }
   nameDialog.classList.add('hidden');
+  await addScratch(name);
+}
+
+/** Make a scratch space, and open it. */
+async function addScratch(name) {
+  // From the no-site banner this can run before the worker has confirmed the
+  // schema — nothing else on that path waits for it.
+  await storageReady;
   const key = 'scratch:' + name + ':' + Date.now();
   const list = await getScratchList();
   list.push({ key, name });

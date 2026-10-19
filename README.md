@@ -102,6 +102,8 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 
 > **Note:** ScratchDump will **not** work on `chrome://`, `brave://`, or other browser-internal pages. This is a browser security restriction that applies to all extensions.
 
+> **Note:** Local files (`file://`) have no site, so there are no site notes for them. Clicking the icon on one offers **New scratch** instead, which opens a scratch space named *Untitled* (then *Untitled1*, *Untitled2*…). Chrome only lets extensions onto local files when **Allow access to file URLs** is on in the extension's details. It is on by default for unpacked installs, and off for store installs.
+
 ### Upgrading from 1.1.8 or earlier — read this first
 
 Until 1.2.0 the extension's ID came from the folder it was loaded from. 1.2.0 pins the ID, which means it arrives with a **new** ID and an empty notebook. Your old notes are still there, in the old install. Move them across once:
@@ -130,6 +132,7 @@ Your notes stay where they are. ScratchDump's ID is fixed by the `key` in its ma
 | Open / Close | Click the toolbar icon |
 | Switch site notes | Click the **⌄** chevron/dropdown next to the site name |
 | Add a named scratch space | Chevron/Dropdown → **+ Add Scratch** |
+| Take notes on a local file | Click the icon, then **New scratch** on the banner |
 | Add a page | **+** button in the bottom center |
 | Delete a page | 🗑 button next to **+**, then confirm. The only page in a folder is emptied instead |
 | Navigate pages | **‹** and **›** arrows next to page number |
