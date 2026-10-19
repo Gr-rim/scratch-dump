@@ -37,34 +37,45 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 
 ## Features
 
+<sub>**PRODUCTIVITY**</sub>
+
 - 📍 **Per-site notes** — automatically detected and saved per domain
 - 📁 **Named Scratch Spaces** — add freeform notebooks not tied to any URL
 - 🗂️ **Cross-site dropdown** — see and access notes from any site you've written on, from anywhere
 - 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...), and any page can be deleted (it asks first)
-- 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
-- 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
-- 📝 **Export as Markdown or text** — a folder's pages as a file you can read anywhere. Images become a placeholder followed by any text recognized in them
-- 💼 **Back up everything** — every folder, image and recognized text in one file. Restore it on a new install or another computer
-- 📦 **Folder files** — save one folder as a `.scratch` file and open it somewhere else
-- 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
-- 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
-- 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
-- 🔄 **Safe migration** — existing notes are automatically migrated with verify-before-commit safety
-- ⏱️ **Saves when you leave** — edits are flushed when you switch tabs or navigate away, not only after the typing pause
-- 🧹 **Reclaims dead storage** — image blobs orphaned by deleted notes are swept automatically
-- ⚠️ **Says so when it can't save** — a storage failure raises a banner with a retry, rather than failing quietly
-- 🔐 **Site identity from the browser** — which site's notes you get is decided by the browser, not by the page, so a site can't point the panel at another site's notes
-- 🚫 **No install-time permissions** — installing asks for nothing: no access to every website, no clipboard. The panel reaches a site only when you click the icon on it
-- 🎙️ **Mic stops when you close** — dictation ends with the panel instead of running on behind it
 - ↩️ **Per-page undo/redo** — one step per word or pause rather than per keystroke, Ctrl+Z / Ctrl+Y
+- 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
+- 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
+- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge and Opera)
+- 📋 **Copy & Paste buttons** — copy selection or entire page in one click. Paste asks for clipboard access the first time you use it
+- 📝 **Export as Markdown or text** — a folder's pages as a file you can read anywhere. Images become a placeholder followed by any text recognized in them
+- 📦 **Folder files** — save one folder as a `.scratch` file and open it somewhere else
+
+<sub>**SAFETY**</sub>
+
+- 🚫 **No install-time permissions** — installing asks for nothing: no access to every website, no clipboard. The panel reaches a site only when you click the icon on it
+- 🔐 **Site identity from the browser** — which site's notes you get is decided by the browser, not by the page, so a site can't point the panel at another site's notes
+- 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
+- 💼 **Back up everything** — every folder, image and recognized text in one file. Restore it on a new install or another computer
+- ⏱️ **Saves when you leave** — edits are flushed when you switch tabs or navigate away, not only after the typing pause
+- ⚠️ **Says so when it can't save** — a storage failure raises a banner with a retry, rather than failing quietly
+- 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
+- 🔄 **Safe migration** — existing notes are automatically migrated with verify-before-commit safety
+- 🎙️ **Mic stops when you close** — dictation ends with the panel instead of running on behind it
+
+<sub>**CUSTOMIZATION**</sub>
+
 - 🎨 **Dark & Light themes** — dark by default (ofc)
 - 🔡 **Font & text size controls** — Calibri, Arial, Helvetica, and a bundled Roboto (no webfont fetch)
-- 🔒 **Fixed size lock** — prevent accidental resizing
 - 👁️ **Opacity control** — 40%–100%, blend it into your workflow
-- 📋 **Copy & Paste buttons** — copy selection or entire page in one click. Paste asks for clipboard access the first time you use it
 - ↔️ **Resizable window** — drag the bottom-left corner
-- 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
-- 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge and Opera)
+- 🔒 **Fixed size lock** — prevent accidental resizing
+
+<sub>**MISC**</sub>
+
+- 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
+- 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
+- 🧹 **Reclaims dead storage** — image blobs orphaned by deleted notes are swept automatically
 
 ---
 
