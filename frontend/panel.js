@@ -696,7 +696,10 @@ async function resolveHost() {
   // A local file answers with no hostname at all. Nothing went wrong there —
   // the page simply has no site — so it is told apart from a real failure to
   // find out, which used to be reported for both.
-  if (info && info.ok) {
+  if (info && info.ok && info.standalone) {
+    markNoSite('Pick a folder above, or start a scratch.',
+      'This page can’t hold the panel, so ScratchDump opened in its own window. Every folder is in the dropdown above, or start a new scratch space.');
+  } else if (info && info.ok) {
     markNoSite('No site here to keep notes for.',
       'This page has no web address (a local file, for one), so it has no site notes. A scratch space works anywhere.');
   } else {
@@ -1319,9 +1322,19 @@ function stopDictation() {
 
 // ─── CLOSE ───────────────────────────────────────────────────────────────────
 
+// In its own window there is no host page to ask, and nothing to make
+// translucent or pin in place.
+const STANDALONE = window.top === window;
+if (STANDALONE) {
+  for (const id of ['fixedSizeCheck', 'opacityInput']) {
+    document.getElementById(id).closest('.setting-row').style.display = 'none';
+  }
+}
+
 closeBtn.addEventListener('click', () => {
   stopDictation();
-  postToHost('close');
+  if (STANDALONE) window.close();
+  else postToHost('close');
 });
 
 // ─── SETTINGS UI ─────────────────────────────────────────────────────────────

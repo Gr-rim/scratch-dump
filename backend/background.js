@@ -158,6 +158,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'getHostInfo') {
     const url = sender && sender.tab && sender.tab.url;
     if (!url) { sendResponse({ ok: false, reason: 'no tab on sender' }); return false; }
+    // The panel in its own window (see openPanelWindow) is the top page of
+    // that tab. Its "site" would be the extension's own ID; it has none.
+    if (url.startsWith(chrome.runtime.getURL(''))) {
+      sendResponse({ ok: true, hostname: '', standalone: true });
+      return false;
+    }
     try {
       const u = new URL(url);
       sendResponse({ ok: true, hostname: u.hostname, origin: u.origin });
@@ -167,74 +173,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
-  // Sync's transport, run here rather than in the panel.
-  //
-  // Dormant: the phone app is not released, so nothing in the panel calls this
-  // and the manifest no longer asks for the http://*/* permission it needs.
-  //
-  // panel.html is a chrome-extension:// page, which Chrome treats as a secure
-  // context, so a plain-http fetch out of it counts as mixed content and gets
-  // silently upgraded to https. The phone speaks http on a raw socket and has
-  // no TLS to answer with, so the upgraded request dies in the handshake —
-  // net::ERR_SSL_PROTOCOL_ERROR, which surfaces as "can't reach that address"
-  // and looks for all the world like a network fault.
-  //
-  // A service worker is not a document and its fetches are not subresource
-  // loads, so no upgrade is applied. Only the transport moved: pairing, key
-  // derivation and every envelope still happen in syncClient.js.
-  if (msg.action === 'syncFetch') {
-    syncFetch(msg.url, msg.init, msg.timeoutMs)
-      .then(sendResponse)
-      .catch(err => sendResponse({ ok: false, kind: 'network', error: String((err && err.message) || err) }));
-    return true;   // response is sent asynchronously
-  }
-
   return false;
 });
-
-// ── SYNC TRANSPORT ───────────────────────────────────────────────────────────
-
-/**
- * One http request to the phone, on the panel's behalf.
- *
- * Returns rather than throws: the panel needs to tell a timeout apart from a
- * refusal, and an exception thrown here would reach it as a bare
- * "could not establish connection" with everything useful lost.
- *
- * @param {string} url
- * @param {{method?:string, headers?:Object, body?:string}} init
- * @param {number} timeoutMs
- * @returns {Promise<{ok:boolean, kind?:string, status?:number, body?:*, error?:string}>}
- */
-async function syncFetch(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Number(timeoutMs) || 30000);
-
-  try {
-    const res = await fetch(url, {
-      method: (init && init.method) || 'GET',
-      headers: (init && init.headers) || undefined,
-      body: (init && init.body) || undefined,
-      signal: controller.signal,
-      cache: 'no-store',
-    });
-
-    // Read as text and parse here. A body that is not JSON is a peer that is
-    // not ScratchDump, which the panel reports differently from a failure to
-    // reach anything at all.
-    const text = await res.text();
-    let body = null;
-    try { body = JSON.parse(text); } catch { body = null; }
-
-    return { ok: true, status: res.status, body };
-
-  } catch (e) {
-    const kind = (e && e.name === 'AbortError') ? 'timeout' : 'network';
-    return { ok: false, kind, error: String((e && e.message) || e) };
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 // ── ORPHANED IMAGE SWEEP ─────────────────────────────────────────────────────
 // Deleting a note drops its text but leaves its image blobs behind, and older
@@ -275,9 +215,27 @@ chrome.runtime.onStartup.addListener(() => onWake('browser start'));
 chrome.runtime.onInstalled.addListener(() => onWake('install/update'));
 
 // ── TOOLBAR ICON ─────────────────────────────────────────────────────────────
+// The panel opens inside the page where it can, and in a window of its own
+// where it cannot: browser pages, the new tab page, the Web Store, and local
+// files without file access. A click that did nothing there looked broken —
+// and the Web Store tab is where everyone's first click lands.
+
 chrome.action.onClicked.addListener(async (tab) => {
+  if (!(await openPanelInTab(tab))) await openPanelWindow(tab);
+});
+
+/** Pages no extension may script. Asking would only fail. */
+const UNSCRIPTABLE_RE = /^(chrome|chrome-extension|chrome-search|chrome-untrusted|devtools|view-source|brave|edge|opera|vivaldi|about|data|javascript):/;
+
+/**
+ * Toggle the panel inside this tab.
+ * @returns {Promise<boolean>} false when the page cannot hold it
+ */
+async function openPanelInTab(tab) {
+  // Without host access the URL is not ours to read, and that is itself the
+  // answer: activeTab is never granted on the pages this cannot run on.
   const url = tab.url || '';
-  if (/^(chrome|brave|edge|about|data):/.test(url) || !url) return;
+  if (!url || UNSCRIPTABLE_RE.test(url)) return false;
 
   // The click grants activeTab, which is all the injection below needs — there
   // is no content script in the manifest, so no install-time access to every
@@ -285,28 +243,72 @@ chrome.action.onClicked.addListener(async (tab) => {
   try {
     // Already injected on this page by an earlier click
     await chrome.tabs.sendMessage(tab.id, { action: 'togglePanel' });
-  } catch {
-    // Not injected yet — inject it, then toggle
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['backend/content.js']
-      });
-      await chrome.scripting.insertCSS({
-        target: { tabId: tab.id },
-        files: ['backend/content.css']
-      });
-      // Retry sending the message until the content script is ready
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        await new Promise(r => setTimeout(r, 50 * attempt));
-        try {
-          await chrome.tabs.sendMessage(tab.id, { action: 'togglePanel' });
-          return; // success
-        } catch { /* content script not ready yet, retry */ }
-      }
-      console.warn('ScratchDump: content script did not respond after retries');
-    } catch (err) {
-      console.warn('ScratchDump: could not inject', err);
-    }
+    return true;
+  } catch { /* not injected yet */ }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['backend/content.js']
+    });
+    await chrome.scripting.insertCSS({
+      target: { tabId: tab.id },
+      files: ['backend/content.css']
+    });
+  } catch (err) {
+    // The Web Store, and file:// without "Allow access to file URLs", land
+    // here: the URL looked ordinary, and Chrome still said no.
+    console.warn('ScratchDump: cannot open on this page, using a window', err);
+    return false;
   }
+
+  // Retry sending the message until the content script is ready
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await new Promise(r => setTimeout(r, 50 * attempt));
+    try {
+      await chrome.tabs.sendMessage(tab.id, { action: 'togglePanel' });
+      return true;
+    } catch { /* content script not ready yet, retry */ }
+  }
+  console.warn('ScratchDump: content script did not respond after retries');
+  return false;
+}
+
+const PANEL_WINDOW_KEY = 'panelWindowId';
+
+/**
+ * The panel as a small window of its own. One at a time: a second click
+ * brings the open one forward rather than stacking another.
+ */
+async function openPanelWindow(tab) {
+  try {
+    const { [PANEL_WINDOW_KEY]: id } = await chrome.storage.session.get(PANEL_WINDOW_KEY);
+    if (id) {
+      await chrome.windows.update(id, { focused: true });
+      return;
+    }
+  } catch { /* closed since — open a fresh one */ }
+
+  // Near the top-right of the window the click came from, where the in-page
+  // panel would have been.
+  const size = { width: 440, height: 600 };
+  let at = {};
+  try {
+    const from = await chrome.windows.get(tab.windowId);
+    at = {
+      left: Math.max(0, from.left + from.width - size.width - 24),
+      top: Math.max(0, from.top + 80),
+    };
+  } catch { /* let the browser place it */ }
+
+  const win = await chrome.windows.create({
+    url: chrome.runtime.getURL('frontend/panel.html'),
+    type: 'popup', focused: true, ...size, ...at,
+  });
+  await chrome.storage.session.set({ [PANEL_WINDOW_KEY]: win.id });
+}
+
+chrome.windows.onRemoved.addListener(async (id) => {
+  const { [PANEL_WINDOW_KEY]: open } = await chrome.storage.session.get(PANEL_WINDOW_KEY);
+  if (open === id) await chrome.storage.session.remove(PANEL_WINDOW_KEY);
 });

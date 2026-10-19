@@ -11,7 +11,8 @@ desktop.ini
 *.swo
 *~
 
-# Packaged builds
+# Packaged builds — scripts/build.js writes to dist/
+dist/
 *.zip
 *.crx
 *.pem

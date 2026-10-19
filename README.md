@@ -111,9 +111,9 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 
 > **Note:** Chrome and Edge will show a "Developer mode" warning banner — this is normal for any unpacked extension and doesn't affect functionality. Brave and Opera don't show this warning.
 
-> **Note:** ScratchDump will **not** work on `chrome://`, `brave://`, or other browser-internal pages. This is a browser security restriction that applies to all extensions.
+> **Note:** Some pages can't hold the panel: `chrome://` and other browser pages, the new tab page, and the Chrome Web Store, which no extension may touch. Clicking the icon there opens ScratchDump in a small window of its own instead, with every folder in its dropdown.
 
-> **Note:** Local files (`file://`) have no site, so there are no site notes for them. Clicking the icon on one offers **New scratch** instead, which opens a scratch space named *Untitled* (then *Untitled1*, *Untitled2*…). Chrome only lets extensions onto local files when **Allow access to file URLs** is on in the extension's details. It is on by default for unpacked installs, and off for store installs.
+> **Note:** Local files (`file://`) have no site, so there are no site notes for them. Clicking the icon on one offers **New scratch** instead, which opens a scratch space named *Untitled* (then *Untitled1*, *Untitled2*…). Chrome only lets extensions onto local files when **Allow access to file URLs** is on in the extension's details. It's on by default for unpacked installs and off for store installs; with it off, ScratchDump opens in its own window instead.
 
 ### Upgrading from 1.1.8 or earlier — read this first
 
@@ -165,6 +165,8 @@ Your notes stay where they are. ScratchDump's ID is fixed by the `key` in its ma
 ---
 
 ## Privacy
+
+The full policy is in [PRIVACY.md](PRIVACY.md). In short:
 
 ScratchDump stores notes and metadata in `chrome.storage.local` and image blobs in IndexedDB. Both are browser-local storage mechanisms.
 
@@ -306,7 +308,7 @@ Store listings assign their own IDs, so a store build will start with its own em
 
 A phone companion is designed but not released. The plan is an Android app and an installable web app that hold folders locally and move them to and from the extension, either as `.scratch` files or directly over your own Wi-Fi.
 
-The extension's half of the protocol is in this repository (`syncProtocol.js`, `syncClient.js`, and a dormant section of `settings.js`) but is switched off. Its settings row is not in the panel, its scripts are not loaded, and the manifest no longer asks for the `http://*/*` optional permission it needs. Turning it back on means putting those three things back. The design, as it stands:
+The extension's half of the protocol is in this repository, switched off: `syncProtocol.js`, `syncClient.js`, `syncSettings.js` and `backend/syncTransport.js`. None of them is loaded, the store package leaves all four out, and the manifest no longer asks for the `http://*/*` optional permission they need. The steps to turn it back on are at the top of `syncSettings.js`. The design, as it stands:
 
 The extension is the client and never listens, because it cannot. That is the whole reason the phone runs a server, and every other decision here follows from it.
 
@@ -339,10 +341,15 @@ The other three choices in the picker are system faces.
 ```
 scratch-dump/
 ├── manifest.json               # Extension config (Manifest V3)
+├── PRIVACY.md                  # Privacy policy — linked from the store listing
+├── scripts/
+│   └── build.js                # Release zips: `store` (for upload) and `github`
+├── store/                      # Store listing text, screenshots, promo tile
 ├── backend/
-│   ├── background.js           # Service worker — toolbar icon, schema migration, blob sweep
+│   ├── background.js           # Service worker — toolbar icon, panel window, schema migration, blob sweep
 │   ├── content.js              # Injected on icon click — creates & manages the panel iframe
-│   └── content.css             # Minimal host-page styles for the panel container
+│   ├── content.css             # Minimal host-page styles for the panel container
+│   └── syncTransport.js        # Planned sync: http transport for the worker — not loaded
 ├── frontend/
 │   ├── panel.html              # Panel UI entry point
 │   ├── panel.css               # All panel styles + dark/light theming
@@ -356,6 +363,7 @@ scratch-dump/
 │   ├── transfer.js             # Folder files, backups, readable export — the only side that touches storage
 │   ├── syncProtocol.js         # Planned sync: pairing, key derivation, envelopes — not loaded
 │   ├── syncClient.js           # Planned sync: the extension's side — not loaded
+│   ├── syncSettings.js         # Planned sync: settings row and dialogs — not loaded
 │   ├── ocr.js                  # Recognition — language data install/delete, job queue, worker lifecycle
 │   ├── ocrWorker.js            # Preprocessing worker — upscale + binarize (started as a Worker, not a script tag)
 │   ├── stt.js                  # Web Speech API wrapper, Brave-aware
@@ -415,6 +423,19 @@ git clone https://github.com/gr-rim/scratch-dump.git
 ```
 
 The manifest's `key` gives every copy the same ID, so a development checkout and your everyday install can't both be loaded in one Chrome profile, and would share notes if they could. Develop in a separate profile.
+
+### Releasing
+
+The extension itself never needs building. Packaging does, because the two release channels need different zips:
+
+```bash
+node scripts/build.js github   # dist/scratch-dump-<version>.zip — for GitHub releases
+node scripts/build.js store    # dist/scratch-dump-<version>-store.zip — for the Chrome Web Store
+```
+
+The store zip has `manifest.json` at its root, no `key` (the store assigns its own ID), and none of the dormant sync files. The GitHub zip keeps the key, which is what keeps an unpacked install's notes across updates. Both builds fail if `panel.html` or the worker references a file the zip doesn't contain. The script needs Node and nothing else.
+
+Everything the store's dashboard asks for, ready to paste, is in [store/LISTING.md](store/LISTING.md).
 
 ---
 
