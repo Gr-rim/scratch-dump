@@ -488,6 +488,11 @@ body {
   border-color: var(--accent);
 }
 
+.del-page-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .bottom-right {
   display: flex;
   align-items: center;
@@ -528,6 +533,10 @@ body {
   box-shadow: var(--shadow);
   z-index: 100;
   padding: 12px;
+  /* Taller than the panel's minimum height. Without a cap the top rows are
+     cut off above the iframe, where nothing can scroll to them. */
+  max-height: calc(100vh - var(--bar-h) - 8px);
+  overflow-y: auto;
   animation: slideUp 0.15s ease;
 }
 
@@ -1024,6 +1033,15 @@ input[type="checkbox"] {
 }
 
 .xfer-card .is-loss { color: var(--danger); }
+
+/* Which folders a restore replaces — a long list should not push the buttons
+   out of a short panel. */
+.xfer-card .xfer-names {
+  max-height: 72px;
+  overflow-y: auto;
+  font-size: 11px;
+  color: var(--text3);
+}
 
 .xfer-actions { display: flex; gap: 8px; justify-content: flex-end; }
 

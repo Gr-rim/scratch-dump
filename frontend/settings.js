@@ -140,9 +140,11 @@ function initOcrSettings() {
   renderOcrRow();
 }
 
-// ─── FOLDER TRANSFER ─────────────────────────────────────────────────────────
-// Export writes the current folder — pages, images, recognized text — to a
-// single file. Import reads one back, replacing the folder it names.
+// ─── FOLDER FILES, READABLE EXPORT, BACKUP ───────────────────────────────────
+// Export writes the current folder — pages, images, recognized text — to one
+// .scratch file, and Back up does the same for every folder at once. Import and
+// Restore read either kind back, replacing the folders they name. Markdown and
+// Text write a file for reading, which is never read back.
 //
 // Replacing rather than merging is a deliberate choice, and the confirmation
 // dialog is what makes it defensible: it counts what is about to be overwritten
@@ -155,71 +157,72 @@ function _fmtSize(bytes) {
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
+function _plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
 /**
  * Display name for a folder key. prettyName() covers hostnames only; a named
  * scratch carries its name in the key.
  * @param {string} key
  */
 function _xferFolderName(key) {
-  if (key.startsWith('scratch:')) return key.slice('scratch:'.length);
+  if (key.startsWith('scratch:')) return scratchNameFromKey(key);
   if (key.startsWith('site:')) return prettyName(key.slice('site:'.length));
   return key;
 }
 
+/** Title for a readable export, where the full hostname says more than the short name. */
+function _readableTitle(key) {
+  return key.startsWith('site:') ? key.slice('site:'.length) : _xferFolderName(key);
+}
+
+const XFER_BUTTONS = ['exportBtn', 'importBtn', 'mdExportBtn', 'txtExportBtn', 'backupBtn', 'restoreBtn'];
+
 let _xferBusy = false;
 
-function _xferSay(msg, isError) {
-  const el = document.getElementById('xferStatus');
+/** Status line under a settings row. */
+function _say(id, msg, isError) {
+  const el = document.getElementById(id);
   if (!el) return;
   el.textContent = msg;
   el.classList.toggle('is-error', !!isError);
 }
 
-function _xferReset() {
-  _xferBusy = false;
-  const ex = document.getElementById('exportBtn');
-  const im = document.getElementById('importBtn');
-  if (ex) ex.disabled = false;
-  if (im) im.disabled = false;
+function _xferLock(locked) {
+  _xferBusy = locked;
+  for (const id of XFER_BUTTONS) {
+    const b = document.getElementById(id);
+    if (b) b.disabled = locked;
+  }
 }
 
 /**
- * Ask before overwriting. Resolves true only on an explicit confirm — clicking
- * the backdrop or Cancel resolves false, because the safe answer is the one you
- * get by doing nothing.
+ * Run one transfer with every transfer button locked — two at once would read
+ * and write the same folders — and report a failure on the row it started from.
+ */
+async function _xferRun(statusId, fn) {
+  if (_xferBusy) return;
+  _xferLock(true);
+  try { await fn(); }
+  catch (e) { _say(statusId, String((e && e.message) || e), true); }
+  finally { _xferLock(false); }
+}
+
+/**
+ * The dialog both confirmations share. Resolves true only on an explicit
+ * confirm — the backdrop, Escape and Cancel all resolve false, because the safe
+ * answer is the one you get by doing nothing.
  *
- * @param {{exists:boolean, localPages:number, incomingPages:number,
- *          changed:number, missingImages:number}} info
- * @param {string} folderName
+ * @param {string} title @param {Node[]} body @param {string} okLabel
  * @returns {Promise<boolean>}
  */
-function confirmImport(info, folderName) {
+function _confirmDialog(title, body, okLabel) {
   return new Promise((resolve) => {
     const back = document.createElement('div');
     back.className = 'xfer-confirm';
-
     const card = document.createElement('div');
     card.className = 'xfer-card';
-
     const h = document.createElement('h3');
-    h.textContent = info.exists ? 'Replace this folder?' : 'Import folder?';
-
-    const p = document.createElement('p');
-    if (info.exists) {
-      const lost = document.createElement('span');
-      lost.className = 'is-loss';
-      lost.textContent = info.changed + (info.changed === 1 ? ' page' : ' pages')
-        + ' will be overwritten';
-      p.append(
-        folderName + ' already exists here with ' + info.localPages
-          + (info.localPages === 1 ? ' page. ' : ' pages. '),
-        lost,
-        ' and replaced with ' + info.incomingPages + '. This cannot be undone.'
-      );
-    } else {
-      p.textContent = folderName + ' will be added with ' + info.incomingPages
-        + (info.incomingPages === 1 ? ' page.' : ' pages.');
-    }
+    h.textContent = title;
 
     const actions = document.createElement('div');
     actions.className = 'xfer-actions';
@@ -228,21 +231,10 @@ function confirmImport(info, folderName) {
     cancel.textContent = 'Cancel';
     const ok = document.createElement('button');
     ok.className = 'btn-primary';
-    ok.textContent = info.exists ? 'Replace' : 'Import';
-
+    ok.textContent = okLabel;
     actions.append(cancel, ok);
-    card.append(h, p);
 
-    if (info.missingImages) {
-      const warn = document.createElement('p');
-      warn.className = 'is-loss';
-      warn.textContent = info.missingImages
-        + (info.missingImages === 1 ? ' image is' : ' images are')
-        + ' missing from this file and will not appear.';
-      card.append(warn);
-    }
-
-    card.append(actions);
+    card.append(h, ...body, actions);
     back.append(card);
     document.body.append(back);
     ok.focus();
@@ -255,106 +247,193 @@ function confirmImport(info, folderName) {
   });
 }
 
+function _missingImagesNote(count) {
+  const warn = document.createElement('p');
+  warn.className = 'is-loss';
+  warn.textContent = (count === 1 ? '1 image is' : count + ' images are')
+    + ' missing from this file and will not appear.';
+  return warn;
+}
+
+/**
+ * Ask before one folder lands.
+ * @param {{exists:boolean, localPages:number, incomingPages:number,
+ *          changed:number, missingImages:number}} info
+ * @param {string} folderName
+ * @returns {Promise<boolean>}
+ */
+function confirmImport(info, folderName) {
+  const p = document.createElement('p');
+  if (info.exists) {
+    const lost = document.createElement('span');
+    lost.className = 'is-loss';
+    lost.textContent = _plural(info.changed, 'page', 'pages') + ' will be overwritten';
+    p.append(
+      folderName + ' already exists here with ' + _plural(info.localPages, 'page', 'pages') + '. ',
+      lost,
+      ' and replaced with ' + info.incomingPages + '. This cannot be undone.'
+    );
+  } else {
+    p.textContent = folderName + ' will be added with ' + _plural(info.incomingPages, 'page.', 'pages.');
+  }
+  const body = [p];
+  if (info.missingImages) body.push(_missingImagesNote(info.missingImages));
+  return _confirmDialog(info.exists ? 'Replace this folder?' : 'Import folder?', body,
+    info.exists ? 'Replace' : 'Import');
+}
+
+/**
+ * Ask before several folders land at once — a backup, or several files.
+ * The totals carry the same warning confirmImport() gives for one.
+ * @param {Object[]} objs @param {Object[]} infos — describeImport() of each
+ * @returns {Promise<boolean>}
+ */
+function confirmRestore(objs, infos) {
+  const replaced = objs.filter((_, i) => infos[i].exists);
+  const pagesLost = infos.reduce((n, info) => n + (info.exists ? info.changed : 0), 0);
+  const missing = infos.reduce((n, info) => n + info.missingImages, 0);
+
+  const p = document.createElement('p');
+  p.append(_plural(objs.length, 'folder', 'folders') + ' to restore. ');
+  if (replaced.length) {
+    const lost = document.createElement('span');
+    lost.className = 'is-loss';
+    lost.textContent = _plural(replaced.length, 'already exists', 'already exist')
+      + ' here and will be replaced, overwriting ' + _plural(pagesLost, 'page', 'pages');
+    p.append(lost, '. This cannot be undone.');
+  } else {
+    p.append('None of them exist here yet, so nothing is overwritten.');
+  }
+  const body = [p];
+
+  if (replaced.length) {
+    const names = replaced.map(o => o.folder.name || o.folder.key);
+    const list = document.createElement('p');
+    list.className = 'xfer-names';
+    list.textContent = 'Replaced: ' + names.slice(0, 6).join(', ')
+      + (names.length > 6 ? ' and ' + (names.length - 6) + ' more' : '');
+    body.push(list);
+  }
+  if (missing) body.push(_missingImagesNote(missing));
+  return _confirmDialog('Restore ' + _plural(objs.length, 'folder', 'folders') + '?', body, 'Restore');
+}
+
+/**
+ * Import whatever was picked: one folder file, several, or a backup. Every
+ * file is read and checked before the dialog opens, and nothing is written
+ * until it is confirmed.
+ * @param {File[]} files @param {string} statusId
+ */
+async function _importFiles(files, statusId) {
+  // Pending edits land before the folders underneath them are replaced, not
+  // after: a debounced save arriving late would write the old page back into
+  // the imported folder. Flushed before counting, too, so the dialog's count of
+  // overwritten pages includes what was just typed.
+  await flushSave();
+
+  _say(statusId, 'Reading…');
+  const objs = await readImportFiles(files);
+  if (!objs.length) { _say(statusId, 'There are no folders in that file.'); return; }
+  const infos = [];
+  for (const obj of objs) infos.push(await describeImport(obj));
+
+  const go = objs.length === 1
+    ? await confirmImport(infos[0], objs[0].folder.name || objs[0].folder.key)
+    : await confirmRestore(objs, infos);
+  if (!go) { _say(statusId, 'Import cancelled.'); return; }
+
+  _say(statusId, 'Importing…');
+  let pages = 0, images = 0;
+  for (const obj of objs) {
+    const res = await applyImport(obj);
+    pages += res.pages;
+    images += res.images;
+  }
+
+  // The folder on screen may be one just replaced. loadFolder() drops the
+  // cache and re-reads, which is exactly what that needs.
+  if (objs.some(o => o.folder.key === ScratchDump.currentFolderKey)) {
+    await loadFolder(ScratchDump.currentFolderKey);
+  }
+  await renderFolderMenu();
+
+  const what = objs.length === 1
+    ? (objs[0].folder.name || objs[0].folder.key)
+    : _plural(objs.length, 'folder', 'folders');
+  _say(statusId, 'Imported ' + what + ' — ' + _plural(pages, 'page', 'pages')
+    + (images ? ', ' + _plural(images, 'image', 'images') : ''));
+}
+
 function initTransferSettings() {
-  const exportBtn = document.getElementById('exportBtn');
-  const importBtn = document.getElementById('importBtn');
   const fileInput = document.getElementById('importFile');
-  if (!exportBtn || !importBtn || !fileInput) return;
+  const btn = (id) => document.getElementById(id);
+  if (!fileInput || XFER_BUTTONS.some(id => !btn(id))) return;
 
-  exportBtn.addEventListener('click', async () => {
-    if (_xferBusy) return;
-    _xferBusy = true;
-    exportBtn.disabled = true;
-    importBtn.disabled = true;
+  btn('exportBtn').addEventListener('click', () => _xferRun('xferStatus', async () => {
+    await flushSave();   // anything still in the save debounce belongs in the file
+    const key = ScratchDump.currentFolderKey;
+    if (!key) { _say('xferStatus', 'No folder open yet.', true); return; }
+    const name = _xferFolderName(key);
 
-    try {
-      // Anything still in the save debounce belongs in the file.
+    _say('xferStatus', 'Packing…');
+    const { obj, blob, filename } = await exportFolder(key, name, (pct) => {
+      if (pct < 100) _say('xferStatus', 'Packing… ' + pct + '%');
+    });
+    downloadBlob(blob, filename);
+
+    const imgs = Object.keys(obj.images).length;
+    _say('xferStatus', 'Saved ' + filename + ' — ' + _fmtSize(blob.size)
+      + (imgs ? ', ' + _plural(imgs, 'image', 'images') : ''));
+  }));
+
+  for (const [id, mode] of [['mdExportBtn', 'md'], ['txtExportBtn', 'txt']]) {
+    btn(id).addEventListener('click', () => _xferRun('readStatus', async () => {
       await flushSave();
-
       const key = ScratchDump.currentFolderKey;
-      if (!key) { _xferSay('No folder open yet.', true); return; }
-      const name = _xferFolderName(key);
+      if (!key) { _say('readStatus', 'No folder open yet.', true); return; }
+      const { blob, filename } = await exportReadable(key, _readableTitle(key), mode);
+      downloadBlob(blob, filename);
+      _say('readStatus', 'Saved ' + filename + ' — ' + _fmtSize(blob.size));
+    }));
+  }
 
-      _xferSay('Packing…');
-      const { obj, blob, filename } = await exportFolder(key, name, (pct) => {
-        if (pct < 100) _xferSay('Packing… ' + pct + '%');
-      });
+  btn('backupBtn').addEventListener('click', () => _xferRun('backupStatus', async () => {
+    await flushSave();
+    _say('backupStatus', 'Packing…');
+    const res = await exportEverything((pct) => {
+      if (pct < 100) _say('backupStatus', 'Packing… ' + pct + '%');
+    });
+    downloadBlob(res.blob, res.filename);
+    _say('backupStatus', 'Saved ' + res.filename + ' — ' + _plural(res.folders, 'folder', 'folders')
+      + (res.images ? ', ' + _plural(res.images, 'image', 'images') : '')
+      + ', ' + _fmtSize(res.blob.size));
+  }));
 
-      const imgs = Object.keys(obj.images).length;
-      const detail = _fmtSize(blob.size)
-        + (imgs ? ', ' + imgs + (imgs === 1 ? ' image' : ' images') : '');
-
-      const how = await shareOrDownload(blob, filename);
-      if (how === 'shared') {
-        _xferSay('Sent ' + filename + ' — ' + detail);
-      } else if (how === 'cancelled') {
-        _xferSay('Not sent.');
-      } else {
-        _xferSay('Saved ' + filename + ' — ' + detail);
-      }
-    } catch (e) {
-      _xferSay(String((e && e.message) || e), true);
-    } finally {
-      _xferReset();
-    }
-  });
-
-  importBtn.addEventListener('click', () => {
+  // Import and Restore share one picker, and both take folder files and
+  // backups alike. Which row asked is only about where the outcome is reported.
+  let importStatus = 'xferStatus';
+  const pick = (statusId) => {
     if (_xferBusy) return;
-    // Cleared first, so picking the same file twice in a row still fires.
-    fileInput.value = '';
+    importStatus = statusId;
+    fileInput.value = '';   // so picking the same file twice in a row still fires
     fileInput.click();
+  };
+  btn('importBtn').addEventListener('click', () => pick('xferStatus'));
+  btn('restoreBtn').addEventListener('click', () => pick('backupStatus'));
+
+  fileInput.addEventListener('change', () => {
+    const files = Array.from(fileInput.files || []);
+    if (!files.length) return;
+    _xferRun(importStatus, () => _importFiles(files, importStatus));
   });
-
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) return;
-
-    _xferBusy = true;
-    exportBtn.disabled = true;
-    importBtn.disabled = true;
-
-    try {
-      _xferSay('Reading…');
-      const obj = await readImportFile(file);
-      const info = await describeImport(obj);
-      const name = obj.folder.name || obj.folder.key;
-
-      // Released before the dialog so a long deliberation doesn't sit on top of
-      // a disabled UI.
-      _xferReset();
-      const go = await confirmImport(info, name);
-      if (!go) { _xferSay('Import cancelled.'); return; }
-
-      _xferBusy = true;
-      exportBtn.disabled = true;
-      importBtn.disabled = true;
-
-      _xferSay('Importing…');
-      const res = await applyImport(obj);
-
-      // The folder on screen may be the one just replaced.
-      if (obj.folder.key === ScratchDump.currentFolderKey) {
-        // loadFolder() drops the cache and re-reads, which is exactly what is
-        // needed after the folder underneath the editor has been replaced.
-        await loadFolder(obj.folder.key);
-      }
-      await renderFolderMenu();
-
-      _xferSay('Imported ' + name + ' — ' + res.pages
-        + (res.pages === 1 ? ' page' : ' pages')
-        + (res.images ? ', ' + res.images + (res.images === 1 ? ' image' : ' images') : ''));
-    } catch (e) {
-      _xferSay(String((e && e.message) || e), true);
-    } finally {
-      _xferReset();
-    }
-  });
-
-  _xferSay('Save this folder to a file, or open one.');
 }
 
 // ─── SYNC WITH PHONE ─────────────────────────────────────────────────────────
+// Dormant until the phone app ships. initSyncSettings() is not called, the
+// settings row is out of panel.html, and syncProtocol.js / syncClient.js are
+// not loaded — putting those three back, plus the http://*/* optional host
+// permission in the manifest, is what turns this on again.
+//
 // Pairing is entered once and remembered. Everything after that is two actions:
 // send this folder up, or bring one down.
 //

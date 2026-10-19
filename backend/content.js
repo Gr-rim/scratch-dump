@@ -1,7 +1,20 @@
 // content.js — ScratchDump
 (function () {
-  if (window.__scratchdump_loaded__) return;
-  window.__scratchdump_loaded__ = true;
+  // Injected on demand by background.js, never declared in the manifest — a
+  // static content script on <all_urls> is what made Chrome warn "read and
+  // change all your data on all websites" at install.
+  //
+  // A copy injected before an update or reload survives it as an orphan: its
+  // chrome.* is dead, but it shares this isolated world, so a plain "already
+  // loaded" flag would keep the live copy out and the panel would never open
+  // on that tab again. Only a copy that can still reach the extension counts.
+  if (window.__scratchdump_alive__ && window.__scratchdump_alive__()) return;
+  window.__scratchdump_alive__ = () => {
+    try { return !!chrome.runtime.id; } catch { return false; }
+  };
+  // The orphan's panel, if it left one. Its iframe went with the old version.
+  const stale = document.getElementById('__scratchdump__');
+  if (stale) stale.remove();
 
   let panelContainer = null;
   let panelIframe = null;

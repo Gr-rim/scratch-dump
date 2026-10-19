@@ -14,7 +14,7 @@
 
 *Per-site notes. Local storage. No accounts. No cloud. No nonsense.*
 
-[![Version](https://img.shields.io/badge/Version-1.1.8-blue?style=flat-square)]()
+[![Version](https://img.shields.io/badge/Version-1.2.0-blue?style=flat-square)]()
 [![Chrome](https://img.shields.io/badge/Chrome-Works-4285F4?style=flat-square&logo=google-chrome&logoColor=white)](https://github.com)
 [![Brave](https://img.shields.io/badge/Brave-Works-FB542B?style=flat-square&logo=brave&logoColor=white)](https://github.com)
 [![Edge](https://img.shields.io/badge/Edge-Works-0078D7?style=flat-square&logo=microsoft-edge&logoColor=white)](https://github.com)
@@ -40,11 +40,12 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 📍 **Per-site notes** — automatically detected and saved per domain
 - 📁 **Named Scratch Spaces** — add freeform notebooks not tied to any URL
 - 🗂️ **Cross-site dropdown** — see and access notes from any site you've written on, from anywhere
-- 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...)
+- 📄 **Multi-page** — each site/space gets unlimited pages (Pg. 1, Pg. 2...), and any page can be deleted (it asks first)
 - 🔀 **Cross-tab aware** — open the same site's notes in two tabs and edits propagate between them, instead of one tab silently overwriting the other
 - 🖼️ **Image paste** — paste screenshots and images inline (JPG, PNG, GIF, AVIF, SVG, WebP), resizable
-- 📤 **Move folders to your phone** — export a folder (pages, images and recognized text) to one file and hand it straight to your phone through the system share sheet. No account, no server, no sync service
-- 📶 **Sync over your own Wi-Fi** — pair with the phone app once and move folders either way with no file in between. Encrypted with a code you type, reaching one address you approved. Nothing leaves your network
+- 📝 **Export as Markdown or text** — a folder's pages as a file you can read anywhere. Images become a placeholder followed by any text recognized in them
+- 💼 **Back up everything** — every folder, image and recognized text in one file. Restore it on a new install or another computer
+- 📦 **Folder files** — save one folder as a `.scratch` file and open it somewhere else
 - 🔍 **Text in images** — pasted screenshots are read with OCR and the text is kept alongside the image, so you can right-click and copy it out. Off until you enable it; the engine is bundled, the language data is a one-time ~2 MB download you can delete again
 - 🗜️ **Automatic image compression** — pasted images are resized (max 800px) and JPEG-compressed (0.7 quality), cutting storage use by ~70-80%
 - 💾 **Hybrid storage** — text/metadata in `chrome.storage.local`, image blobs in IndexedDB (no hard cap), each image stored once no matter how often you edit the note
@@ -53,13 +54,14 @@ ScratchDump is a browser extension scratchpad that **automatically organises you
 - 🧹 **Reclaims dead storage** — image blobs orphaned by deleted notes are swept automatically
 - ⚠️ **Says so when it can't save** — a storage failure raises a banner with a retry, rather than failing quietly
 - 🔐 **Site identity from the browser** — which site's notes you get is decided by the browser, not by the page, so a site can't point the panel at another site's notes
+- 🚫 **No install-time permissions** — installing asks for nothing: no access to every website, no clipboard. The panel reaches a site only when you click the icon on it
 - 🎙️ **Mic stops when you close** — dictation ends with the panel instead of running on behind it
-- ↩️ **Per-page undo/redo** — full history stack, Ctrl+Z / Ctrl+Y
+- ↩️ **Per-page undo/redo** — one step per word or pause rather than per keystroke, Ctrl+Z / Ctrl+Y
 - 🎨 **Dark & Light themes** — dark by default (ofc)
 - 🔡 **Font & text size controls** — Calibri, Arial, Helvetica, and a bundled Roboto (no webfont fetch)
 - 🔒 **Fixed size lock** — prevent accidental resizing
 - 👁️ **Opacity control** — 40%–100%, blend it into your workflow
-- 📋 **Copy & Paste buttons** — copy selection or entire page in one click
+- 📋 **Copy & Paste buttons** — copy selection or entire page in one click. Paste asks for clipboard access the first time you use it
 - ↔️ **Resizable window** — drag the bottom-left corner
 - 🛡️ **XSS protection** — sanitized HTML, secure `postMessage` origins
 - 🎙️ **Voice input** — dictate notes hands-free using your browser's built-in speech recognition (Chrome, Edge and Opera)
@@ -100,6 +102,25 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 
 > **Note:** ScratchDump will **not** work on `chrome://`, `brave://`, or other browser-internal pages. This is a browser security restriction that applies to all extensions.
 
+### Upgrading from 1.1.8 or earlier — read this first
+
+Until 1.2.0 the extension's ID came from the folder it was loaded from. 1.2.0 pins the ID, which means it arrives with a **new** ID and an empty notebook. Your old notes are still there, in the old install. Move them across once:
+
+1. Unzip 1.2.0 to a **new folder** and Load unpacked. Keep the old version installed.
+   **Don't** unzip 1.2.0 over your old folder for this upgrade: Chrome ends up with two entries pointing at one folder.
+2. In the **old** version, for each folder: open it from the dropdown, then **Settings → Move to Phone → Export**.
+3. In **1.2.0**: **Settings → Backup → Restore**, and select all the exported `.scratch` files at once.
+4. Check everything arrived, then remove the old version.
+
+### Updating (1.2.0 and later)
+
+1. Unzip the new release **over your existing folder**, replacing the files (or `git pull` if you cloned).
+2. On the extensions page, click the reload icon ↻ on the ScratchDump card.
+
+Your notes stay where they are. ScratchDump's ID is fixed by the `key` in its manifest, so it keeps the same storage whichever folder it is loaded from.
+
+> ⚠️ **Never click Remove** to update. Removing an extension deletes everything it stored, notes included. If you want a safety net first, use **Settings → Backup → Back up all**.
+
 ---
 
 ## How to Use
@@ -110,6 +131,7 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 | Switch site notes | Click the **⌄** chevron/dropdown next to the site name |
 | Add a named scratch space | Chevron/Dropdown → **+ Add Scratch** |
 | Add a page | **+** button in the bottom center |
+| Delete a page | 🗑 button next to **+**, then confirm. The only page in a folder is emptied instead |
 | Navigate pages | **‹** and **›** arrows next to page number |
 | Paste an image | Ctrl+V / Cmd+V anywhere in the editor |
 | Resize image | Drag the right edge of any pasted image |
@@ -119,9 +141,12 @@ Works the same on **Brave**, **Edge**, and **Opera** — just swap the URL:
 | Settings | Gear icon (Bottom-right) |
 | Note changed in another tab | A notice appears above the editor — **Load theirs** or **Keep mine** |
 | Saving stopped working | A red banner appears above the editor with a **Retry** button |
-| Pair with your phone | Gear icon → **Sync with Phone** → **Pair**, then enter the address and code the phone shows |
-| Move a folder over Wi-Fi | Gear icon → **Sync with Phone** → **Sync…**, then **Get** or **Send** |
-| Delete Folder | Just remove everything from the folder |
+| Export as Markdown or text | Gear icon → **Export as** → **Markdown** or **Text** |
+| Back up everything | Gear icon → **Backup** → **Back up all** |
+| Restore a backup | Gear icon → **Backup** → **Restore**, pick the file |
+| Save / open one folder | Gear icon → **Folder file** → **Export** or **Import** |
+| Delete a scratch space | Dropdown → **×** next to its name |
+| Remove a site from the dropdown | Empty its pages; a site with nothing in it isn't listed |
 
 ---
 
@@ -136,31 +161,28 @@ This means:
 - ✅ No analytics, no ads, no third-party anything
 - ✅ Uninstalling the extension removes all data
 
-The panel makes no network requests at all, with exactly two opt-in exceptions: enabling **Text in Images** downloads a language file once, and pairing with a phone lets the panel reach that one address on your own network (both below). Leave both off and the extension never touches the network. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
+The panel makes no network requests at all, with one opt-in exception: enabling **Text in Images** downloads a language file once (below). Leave it off and the extension never touches the network. Roboto is bundled with the extension rather than pulled from Google Fonts, so opening the panel no longer tells a third party which site you are on — and the font still renders when you are offline.
 
-### Moving Folders
+### Permissions
 
-Settings → **Move to Phone** exports the folder you are looking at to a `.scratch` file — a gzipped bundle of its pages, every image they reference, and any recognized text. **Import** reads one back.
+Installing ScratchDump shows no permission warnings. It asks for:
 
-An import **replaces** the folder it names rather than merging into it. If that folder already exists here, you are told how many pages will be overwritten before anything is written, and nothing is applied until you confirm. A file that turns out to be damaged leaves your notes untouched — imports apply in one step at the end or not at all.
+| Permission | Why | When |
+|---|---|---|
+| `storage`, `unlimitedStorage` | Your notes | Install, no warning |
+| `activeTab`, `scripting` | Open the panel on the site you clicked the icon on, and nowhere else | Install, no warning |
+| Clipboard read | The **Paste** button. Ctrl+V never needs it | The first time you click Paste |
+| `cdn.jsdelivr.net` | The OCR language file | When you click Download under Text in Images; handed back when you delete it |
 
-Where the operating system offers a share sheet (Windows, macOS), Export opens it — so the file can go straight to your phone over Nearby Share, Phone Link or AirDrop without a trip through your Downloads folder. Where it does not (Linux, Firefox), Export saves the file and you move it yourself.
+Until 1.2.0 the extension also declared a content script on every site plus the `tabs` and clipboard permissions, which Chrome shows as *"Read and change all your data on all websites"* and *"Read and modify data you copy and paste"*. None of them were needed.
 
-The mobile side lives in `scratch-bump/`, a separate project with its own repository. It ships both as an installable web app and as an Android application; the web app is what GitHub Pages serves, and it is the only client on iOS.
+### Folder Files and Backups
 
-### Sync With Phone
+Settings → **Folder file → Export** saves the folder you are looking at as a `.scratch` file: a gzipped bundle of its pages, every image they reference, and any recognized text. **Backup → Back up all** does the same for every folder at once. **Import** and **Restore** read either kind back, and you can select several files in one go.
 
-Settings → **Sync with Phone** moves the same folders over your own Wi-Fi, with no file in between. Pair once with an address and a code the phone shows, then **Get** a folder off it or **Send** the one you have open.
+An import **replaces** the folders it names rather than merging into them. If a folder already exists here, you are told how many pages will be overwritten before anything is written, and nothing is applied until you confirm. Every file is read and checked before anything is written, so a damaged file in a selection leaves your notes untouched.
 
-**The phone is the server, and the extension is the client.** That is not a preference — a browser extension can make requests and cannot receive them, so the half that has to listen is the half on the phone. Sync therefore works only while the phone app has sync switched on, which is also what makes it *on-request* rather than a background service.
-
-**Encrypted with the code you typed.** The code and a salt from the phone derive an AES-GCM key through PBKDF2. Authentication falls out of that rather than being a separate mechanism: a peer with the wrong code produces a payload whose tag does not verify, so decryption fails. There is no password to compare and no token to leak into a log. Only the first request — `/hello`, which returns a version, a public salt and a device name — is unencrypted; everything after it, including *which method is being called*, is inside the envelope.
-
-**One address, granted at pairing.** Chrome match patterns cannot express an IP range, so there is no narrow static permission to ship. The extension asks for an optional host permission for the specific address you paired with, at the moment you pair, and hands it back when you unpair. Someone who never pairs is never asked for anything.
-
-**Arriving folders go through the same door as files.** A folder pulled from the phone is applied by exactly the code that applies one from a `.scratch` file — same overwrite warning, same all-or-nothing apply. Sync is a different transport, not a different import.
-
-The pairing code changes each time the phone's app restarts. When that happens the extension says so and asks you to re-pair, rather than failing as though the phone were unreachable.
+**Export as → Markdown / Text** is different: it writes a file for *reading*, not one to import back. Pages are separated by headings that match their page numbers, empty pages are left out, and each image becomes an `[image]` line followed by any text recognized in it.
 
 ### Text in Images
 
@@ -221,15 +243,25 @@ Every rewritten image ref is verified against the blob store before the migratio
 
 Typing is debounced 300 ms. Every write — debounced or forced — goes through a single serialized chain, so a flush can never interleave with a save already in flight, and each write snapshots the folder key, page index, and content synchronously.
 
+A change made by code rather than typing — a paste, an image, bold/italic, dictation — fires no `input` event, because the browser did not make it. Each one records its own undo step and schedules the save itself. Before 1.2.0 a text paste did neither, so a paste followed by leaving the page was lost.
+
 Edits are additionally flushed when the tab is hidden and on `pagehide`. The `pagehide` flush is best-effort: `chrome.storage` has no synchronous write, so a frame torn down immediately may not finish. The hidden-tab flush covers the common path, since a tab is normally switched away from before it is closed.
 
 `chrome.storage` reports failures through `runtime.lastError` rather than by throwing, so an unchecked write looks exactly like a successful one. Every storage call checks it. When a save fails the panel shows a red **Not saving** banner with a Retry button and keeps the edit marked pending; a later successful write clears the banner. A reloaded extension and a full profile are described in plain words rather than raw error text.
 
 Reads are guarded the same way, and a failed read is the more dangerous of the two: an empty editor looks exactly like an empty note, and typing into it would replace notes that are still on disk. So the editor is locked read-only until the read succeeds, with a banner explaining why and a Retry button. The same lock covers the brief moment while the worker confirms the schema, which stops the panel rendering `idb:` refs as broken images before the blob store is open.
 
+### Undo
+
+One step per word or pause, not per keystroke. Typing opens a step, and it closes on a one-second pause, a space after a word, a line break, or a switch between typing and deleting. The boundary is taken on `beforeinput`, so the closed step holds the text as it stood before the change that ended it. Each page keeps the last 100 steps.
+
+A snapshot keeps each image as its `idb:` ref rather than its pixels. The live editor holds images as full data URLs, so a stack of those used to run to megabytes per step and reading it on every keystroke made typing beside screenshots slow. Undo resolves the refs again on the way back in.
+
+Deleting a page drops its history and moves every later page's stack down one, so the stacks keep lining up with the pages.
+
 ### Site Identity
 
-The panel is an iframe, and it cannot read its parent's origin. It asks the service worker instead, which reports the hostname from the tab's own URL.
+The panel is an iframe, and it cannot read its parent's origin. It asks the service worker instead, which reports the hostname from the tab's own URL. The worker can read that URL because clicking the icon grants `activeTab` for that tab; there is no `tabs` permission and no content script declared in the manifest. `content.js` is injected by the click, so ScratchDump has no presence on a page until you ask for it there.
 
 That detail matters more than it looks. The panel used to ask the *page* over `postMessage`, and an origin check alone would not have fixed it: the page and the extension's content script share one window and one origin, so a hostname the page invented is indistinguishable at the receiving end from a real one. Only the browser can settle it. Once identity is resolved the panel refuses any later claim, and outgoing messages are addressed to the real origin instead of a wildcard.
 
@@ -246,13 +278,27 @@ Two panels open on the same site stay consistent. When another tab writes the fo
 
 Image blobs are reachable only through `idb:<uuid>` refs inside note HTML, so deleting a note or removing an image from one leaves its blob unreferenced. Deleting a scratch space releases the blobs that no remaining note references. A full sweep runs in the service worker on browser start and on install/update — throttled to once per 12 hours — removing every blob nothing points at.
 
-The sweep fails closed. It decides what to delete by reading every note, and an unreadable result is indistinguishable from a profile with no notes at all — which would condemn the entire store. So every read on that path rejects rather than returning something empty, and a storage failure aborts the sweep instead of reclaiming everything. Deleting a scratch space settles the save chain first, so a write still in flight cannot land afterwards and put the key back pointing at blobs that were just released.
+The sweep fails closed. It decides what to delete by reading every note, and an unreadable result is indistinguishable from a profile with no notes at all — which would condemn the entire store. So every read on that path rejects rather than returning something empty, and a storage failure aborts the sweep instead of reclaiming everything. Deleting a scratch space or a page settles the save chain first, so a write still in flight cannot land afterwards and put the key back pointing at blobs that were just released.
 
-### Sync
+### Extension ID
+
+Everything ScratchDump stores belongs to its extension ID. For an unpacked extension Chrome derives that ID from the folder path, unless the manifest carries a `key`, so before 1.2.0 unzipping an update anywhere new produced a different ID and an empty notebook.
+
+`manifest.json` now carries the public half of a key pair, which pins the ID to `aioponbamdmmgijjedoilafinofjnibn` wherever the folder lives. The private half is not in this repository and is only needed to sign a `.crx`.
+
+Store listings assign their own IDs, so a store build will start with its own empty storage. **Back up all** and **Restore** are how notes cross that gap, and any other one.
+
+### Phone App and Sync (planned)
+
+A phone companion is designed but not released. The plan is an Android app and an installable web app that hold folders locally and move them to and from the extension, either as `.scratch` files or directly over your own Wi-Fi.
+
+The extension's half of the protocol is in this repository (`syncProtocol.js`, `syncClient.js`, and a dormant section of `settings.js`) but is switched off. Its settings row is not in the panel, its scripts are not loaded, and the manifest no longer asks for the `http://*/*` optional permission it needs. Turning it back on means putting those three things back. The design, as it stands:
 
 The extension is the client and never listens, because it cannot. That is the whole reason the phone runs a server, and every other decision here follows from it.
 
-`syncProtocol.js` is pure — no storage, no DOM, no `chrome.*`, no Node builtins — so the same file runs unchanged in the panel, in the phone app, and under Node. That is what lets one implementation of pairing and encryption be shared by three programs, and be tested with no phone in the room. It is copied verbatim into the mobile project, and a hash check there fails the build if the copies drift.
+`syncProtocol.js` is pure — no storage, no DOM, no `chrome.*`, no Node builtins — so the same file runs unchanged in the panel, in the phone app, and under Node. That is what lets one implementation of pairing and encryption be shared by three programs, and be tested with no phone in the room. It and `wireFormat.js` are meant to be copied verbatim into the mobile project, with a hash check there failing the build if the copies drift.
+
+Pairing uses a typed code: an AES-GCM key is derived from it with PBKDF2. That is fine on a home network. The code carries about 40 bits and stays the same until the phone app restarts, so someone recording traffic on a shared network could brute-force it offline. Before release this should move to a PAKE, or at least a longer code that rotates per session.
 
 Two endpoints. `GET /hello` is unauthenticated and returns a version, a salt and a device name — harmless to serve to anyone, since the salt is public by design and useless without the code. `POST /rpc` carries everything else inside an encrypted envelope, so the URL never reveals which method was called, let alone which folders exist.
 
@@ -281,7 +327,7 @@ scratch-dump/
 ├── manifest.json               # Extension config (Manifest V3)
 ├── backend/
 │   ├── background.js           # Service worker — toolbar icon, schema migration, blob sweep
-│   ├── content.js              # Injected into pages — creates & manages the panel iframe
+│   ├── content.js              # Injected on icon click — creates & manages the panel iframe
 │   └── content.css             # Minimal host-page styles for the panel container
 ├── frontend/
 │   ├── panel.html              # Panel UI entry point
@@ -291,10 +337,11 @@ scratch-dump/
 │   ├── noteStorage.js          # chrome.storage CRUD, scratch list, cross-tab sync
 │   ├── settings.js             # Settings persistence + application
 │   ├── historyManager.js       # Per-page undo/redo stack (pure data structure)
-│   ├── wireFormat.js           # The .scratch file format — pure, and copied verbatim into the mobile app
-│   ├── transfer.js             # Folder export/import — the only side that touches storage
-│   ├── syncProtocol.js         # Pairing, key derivation, envelopes — pure, and copied verbatim into the mobile app
-│   ├── syncClient.js           # The extension's side of sync — calls the phone, never listens
+│   ├── wireFormat.js           # The .scratch file format — pure, shared with the planned mobile app
+│   ├── textExport.js           # Markdown / plain-text rendering of pages — pure
+│   ├── transfer.js             # Folder files, backups, readable export — the only side that touches storage
+│   ├── syncProtocol.js         # Planned sync: pairing, key derivation, envelopes — not loaded
+│   ├── syncClient.js           # Planned sync: the extension's side — not loaded
 │   ├── ocr.js                  # Recognition — language data install/delete, job queue, worker lifecycle
 │   ├── ocrWorker.js            # Preprocessing worker — upscale + binarize (started as a Worker, not a script tag)
 │   ├── stt.js                  # Web Speech API wrapper, Brave-aware
@@ -317,7 +364,7 @@ scratch-dump/
 ```
 
 **Load order** (in `panel.html`):
-`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `wireFormat.js` → `transfer.js` → `syncProtocol.js` → `syncClient.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
+`state.js` → `imageStore.js` → `noteStorage.js` → `ocr.js` → `wireFormat.js` → `textExport.js` → `transfer.js` → `settings.js` → `historyManager.js` → `stt.js` → `panel.js`
 
 All files share a single `ScratchDump` namespace object (defined in `state.js`) instead of ES modules, keeping the extension zero-build. The one third-party dependency is the vendored Tesseract engine under `vendor/`, committed as-is and never fetched at runtime.
 
@@ -325,12 +372,13 @@ All files share a single `ScratchDump` namespace object (defined in `state.js`) 
 
 ## Roadmap
 
-- [ ] Export notes as `.md` or `.txt`
+- [x] Export notes as `.md` or `.txt`
 - [x] Dictated notes (Voice-to-notes) — Chrome, Edge and Opera
 - [x] Text in images (OCR) — opt-in, runs locally
-- [x] Move folders between desktop and phone — file based, no server
-- [x] Standalone mobile app — Android, alongside the web client (still the only client on iOS)
-- [x] On-request sync over the local network — encrypted, paired per device
+- [x] Delete pages
+- [x] Back up and restore everything in one file
+- [ ] Phone app — Android, plus an installable web app for iOS (designed, not released)
+- [ ] On-request sync with the phone over the local network — encrypted, paired per device (designed, not released)
 - [ ] Customized note save location
 - [ ] Keyboard shortcut to open/close
 - [ ] Search across all notes
@@ -351,6 +399,8 @@ git clone https://github.com/gr-rim/scratch-dump.git
 # Go to chrome://extensions → Load unpacked → select the folder
 # Click the refresh icon on the extension card after changes
 ```
+
+The manifest's `key` gives every copy the same ID, so a development checkout and your everyday install can't both be loaded in one Chrome profile, and would share notes if they could. Develop in a separate profile.
 
 ---
 

@@ -2,7 +2,10 @@
 // Pure data structure — no DOM, no storage, no events.
 'use strict';
 
-const UNDO_LIMIT = 50;
+// Steps, not keystrokes: panel.js groups typing into one snapshot per word or
+// pause, and snapshots hold idb: refs rather than image data, so a hundred of
+// them cost little.
+const UNDO_LIMIT = 100;
 
 // Internal store: { [folderKey]: { [pageIdx]: { stack, pointer } } }
 const _undoStacks = {};
@@ -18,10 +21,13 @@ function _getState(folderKey, pageIdx) {
 const History = {
   /**
    * Push a snapshot onto the stack for the current page.
-   * Truncates forward history and trims oldest if over limit.
+   * Truncates forward history and trims oldest if over limit. A snapshot equal
+   * to the current one is not a step, and is dropped — revisiting a page would
+   * otherwise stack a copy of it every time and throw away its redo.
    */
   push(folderKey, pageIdx, snapshot) {
     const state = _getState(folderKey, pageIdx);
+    if (state.pointer >= 0 && state.stack[state.pointer] === snapshot) return;
     state.stack = state.stack.slice(0, state.pointer + 1);
     state.stack.push(snapshot);
     if (state.stack.length > UNDO_LIMIT) {
@@ -56,6 +62,18 @@ const History = {
    */
   ensureFolder(folderKey) {
     if (!_undoStacks[folderKey]) _undoStacks[folderKey] = {};
+  },
+
+  /**
+   * Forget a deleted page's history and move every later page's down one, so
+   * the stacks keep lining up with the page indices they belong to.
+   */
+  dropPage(folderKey, pageIdx) {
+    const pages = _undoStacks[folderKey];
+    if (!pages) return;
+    const later = Object.keys(pages).map(Number).filter(i => i > pageIdx).sort((a, b) => a - b);
+    delete pages[pageIdx];
+    for (const i of later) { pages[i - 1] = pages[i]; delete pages[i]; }
   },
 
   /**

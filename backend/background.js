@@ -169,6 +169,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Sync's transport, run here rather than in the panel.
   //
+  // Dormant: the phone app is not released, so nothing in the panel calls this
+  // and the manifest no longer asks for the http://*/* permission it needs.
+  //
   // panel.html is a chrome-extension:// page, which Chrome treats as a secure
   // context, so a plain-http fetch out of it counts as mixed content and gets
   // silently upgraded to https. The phone speaks http on a raw socket and has
@@ -276,11 +279,14 @@ chrome.action.onClicked.addListener(async (tab) => {
   const url = tab.url || '';
   if (/^(chrome|brave|edge|about|data):/.test(url) || !url) return;
 
+  // The click grants activeTab, which is all the injection below needs — there
+  // is no content script in the manifest, so no install-time access to every
+  // site. The same grant is what lets getHostInfo read this tab's URL.
   try {
-    // Try sending to existing content script first
+    // Already injected on this page by an earlier click
     await chrome.tabs.sendMessage(tab.id, { action: 'togglePanel' });
   } catch {
-    // Content script not present — inject it, then toggle
+    // Not injected yet — inject it, then toggle
     try {
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },

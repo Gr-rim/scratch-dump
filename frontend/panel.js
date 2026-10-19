@@ -16,6 +16,7 @@ const settingsBtn = document.getElementById('settingsBtn');
 const settingsPanel = document.getElementById('settingsPanel');
 const closeBtn = document.getElementById('closeBtn');
 const addPageBtn = document.getElementById('addPageBtn');
+const delPageBtn = document.getElementById('delPageBtn');
 const pageIndicator = document.getElementById('pageIndicator');
 const prevPageBtn = document.getElementById('prevPageBtn');
 const nextPageBtn = document.getElementById('nextPageBtn');
@@ -35,13 +36,62 @@ const closeSettings = document.getElementById('closeSettings');
 const sttBtn = document.getElementById('sttBtn');
 
 // ─── UNDO/REDO WIRING ───────────────────────────────────────────────────────
+// One step per word or pause, not per keystroke. Typing opens a step, and the
+// step closes on a pause, on a space after a word, on a line break, or on a
+// switch between typing and deleting — whichever comes first. A change made by
+// code (paste, formatting, an image, dictation) closes the open step first and
+// is then recorded as a step of its own.
 
-function pushUndoState(html) {
-  History.push(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx, html);
+const UNDO_PAUSE_MS = 1000;
+let undoTimer = null;   // non-null while a typing step is open
+let undoKind = '';      // 'insert' | 'delete' — what the open step is doing
+let undoWord = false;   // whether the open step has typed anything but spaces
+
+/**
+ * The editor as an undo snapshot. The live editor carries every image as a
+ * full data: URL, and a stack of those runs to megabytes per step. An image
+ * already in the blob store is kept as its idb: ref instead, which
+ * setEditorHTML() resolves again on the way back in.
+ */
+function historySnapshot() {
+  return editor.innerHTML.replace(/<img\b[^>]*>/gi, (tag) => {
+    const m = /\bdata-idb="([^"]+)"/.exec(tag);
+    return m ? tag.replace(/\bsrc="data:[^"]*"/, 'src="idb:' + m[1] + '"') : tag;
+  });
+}
+
+function pushUndoState() {
+  History.push(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx, historySnapshot());
   updateUndoButtons();
 }
 
+/** Close the typing step in progress, if there is one, as a single step. */
+function sealTyping() {
+  if (undoTimer === null) return;
+  discardTyping();
+  pushUndoState();
+}
+
+/** Forget the open typing step without recording it — its content is being replaced. */
+function discardTyping() {
+  clearTimeout(undoTimer);
+  undoTimer = null;
+  undoKind = '';
+  undoWord = false;
+}
+
+/**
+ * A change made by code rather than by typing. No input event follows a DOM
+ * insertion, so without this the change is neither undoable nor saved — which
+ * is how a paste followed by leaving the page used to lose the paste.
+ */
+function recordChange() {
+  pushUndoState();
+  saveCurrentPage();
+}
+
 async function undo() {
+  sealTyping();
   const snapshot = History.undo(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx);
   if (snapshot === null) return;
   await setEditorHTML(snapshot, false);
@@ -50,6 +100,7 @@ async function undo() {
 }
 
 async function redo() {
+  sealTyping();   // typing since the last undo is a new step, which ends redo
   const snapshot = History.redo(ScratchDump.currentFolderKey, ScratchDump.currentPageIdx);
   if (snapshot === null) return;
   await setEditorHTML(snapshot, false);
@@ -60,8 +111,11 @@ async function redo() {
 function updateUndoButtons() {
   const fk = ScratchDump.currentFolderKey;
   const pi = ScratchDump.currentPageIdx;
-  undoBtn.disabled = !History.canUndo(fk, pi);
-  redoBtn.disabled = !History.canRedo(fk, pi);
+  // An open typing step is undoable before it is sealed, and it is about to
+  // end redo either way.
+  const typing = undoTimer !== null;
+  undoBtn.disabled = !typing && !History.canUndo(fk, pi);
+  redoBtn.disabled = typing || !History.canRedo(fk, pi);
 }
 
 // ─── IMAGE COMPRESSION ──────────────────────────────────────────────────────
@@ -82,7 +136,6 @@ function compressImage(dataUrl, maxWidth = 800, quality = 0.7) {
 
 // ─── EDITOR ──────────────────────────────────────────────────────────────────
 let saveTimer = null;
-let lastHTML = '';
 let dirty = false;
 
 // Sanitize HTML to prevent stored XSS
@@ -125,8 +178,7 @@ function sanitizeNode(node) {
 async function setEditorHTML(html, pushToStack = true) {
   const resolved = await resolveIDBImages(html || '');
   editor.innerHTML = sanitizeHTML(resolved);
-  if (pushToStack) pushUndoState(editor.innerHTML);
-  lastHTML = editor.innerHTML;
+  if (pushToStack) pushUndoState();
   attachImageResizers();
 }
 
@@ -181,6 +233,7 @@ function saveCurrentPage() {
 
 /** Write now, and resolve once the queue has drained. */
 function flushSave() {
+  sealTyping();   // whatever comes next, the words typed so far are one step
   clearTimeout(saveTimer);
   saveTimer = null;
   if (dirty) writeCurrentPage();
@@ -309,13 +362,29 @@ window.addEventListener('pagehide', () => { flushSave(); });
 
 // ─── EDITOR EVENTS ───────────────────────────────────────────────────────────
 
-editor.addEventListener('input', () => {
-  const html = editor.innerHTML;
-  if (html !== lastHTML) {
-    pushUndoState(html);
-    lastHTML = html;
-    saveCurrentPage();
-  }
+// beforeinput runs before the change lands, so this is where a step that is
+// about to become something else gets closed — its snapshot is still the text
+// as it stood.
+editor.addEventListener('beforeinput', (e) => {
+  if (undoTimer === null) return;
+  const type = e.inputType || '';
+  const kind = type.startsWith('delete') ? 'delete' : 'insert';
+  const lineBreak = type === 'insertParagraph' || type === 'insertLineBreak';
+  const wordEnd = type === 'insertText' && undoWord && /^\s+$/.test(e.data || '');
+  if (kind !== undoKind || lineBreak || wordEnd) sealTyping();
+});
+
+// No innerHTML read here. The live editor carries every image as a data: URL,
+// and serialising that on each keystroke made typing beside a few screenshots
+// visibly slow. The save debounce and the step seal read it, far less often.
+editor.addEventListener('input', (e) => {
+  const type = e.inputType || '';
+  undoKind = type.startsWith('delete') ? 'delete' : 'insert';
+  if (type === 'insertText' && /\S/.test(e.data || '')) undoWord = true;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(sealTyping, UNDO_PAUSE_MS);
+  updateUndoButtons();
+  saveCurrentPage();
 });
 
 editor.addEventListener('keydown', (e) => {
@@ -358,6 +427,7 @@ editor.addEventListener('paste', async (e) => {
           img.src = compressed;
           img.style.width = '200px';
           img.style.height = 'auto';
+          sealTyping();
           insertNodeAtCursor(img, pasteRange);
           attachResizer(img);
           // Store the blob once, here, and carry its id on the element so every
@@ -373,8 +443,7 @@ editor.addEventListener('paste', async (e) => {
             }
             catch (e) { console.warn('ScratchDump: could not store pasted image', e); }
           }
-          pushUndoState(editor.innerHTML);
-          saveCurrentPage();
+          recordChange();
         });
       };
       reader.readAsDataURL(file);
@@ -385,31 +454,44 @@ editor.addEventListener('paste', async (e) => {
 
   if (!handled) {
     const text = e.clipboardData.getData('text/plain');
-    insertTextAtCursor(text, pasteRange);
+    sealTyping();
+    if (insertTextAtCursor(text, pasteRange)) recordChange();
   }
 });
 
 // ─── CURSOR / TEXT HELPERS ───────────────────────────────────────────────────
 
-function insertNodeAtCursor(node, captured = null) {
+/**
+ * Where an insertion goes: the caret if it is in the editor, otherwise the end
+ * of the editor. A caret left in a settings field, or no caret at all, used to
+ * put pasted and dictated text outside the note or nowhere.
+ */
+function editorRange(captured) {
   const sel = window.getSelection();
   const range = captured || (sel.rangeCount ? sel.getRangeAt(0) : null);
-  if (range) {
-    range.deleteContents();
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  } else {
-    editor.appendChild(node);
-  }
+  if (range && editor.contains(range.commonAncestorContainer)) return range;
+  const end = document.createRange();
+  end.selectNodeContents(editor);
+  end.collapse(false);
+  return end;
 }
 
-function insertTextAtCursor(text, captured = null) {
+function insertNodeAtCursor(node, captured = null) {
   const sel = window.getSelection();
-  const range = captured || (sel.rangeCount ? sel.getRangeAt(0) : null);
-  if (!range) return;
+  const range = editorRange(captured);
+  range.deleteContents();
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/** @returns {boolean} whether anything was inserted */
+function insertTextAtCursor(text, captured = null) {
+  if (!text) return false;
+  const sel = window.getSelection();
+  const range = editorRange(captured);
   range.deleteContents();
   const textNode = document.createTextNode(text);
   range.insertNode(textNode);
@@ -417,11 +499,13 @@ function insertTextAtCursor(text, captured = null) {
   range.collapse(true);
   sel.removeAllRanges();
   sel.addRange(range);
+  return true;
 }
 
 function toggleFormat(tagName) {
   const sel = window.getSelection();
   if (!sel.rangeCount) return;
+  sealTyping();
 
   let node = sel.anchorNode;
   let existing = null;
@@ -449,8 +533,7 @@ function toggleFormat(tagName) {
     newRange.selectNodeContents(wrapper);
     sel.addRange(newRange);
   }
-  pushUndoState(editor.innerHTML);
-  saveCurrentPage();
+  recordChange();
 }
 
 function hasFormat(tagName) {
@@ -490,6 +573,7 @@ function attachResizer(img) {
     const rect = img.getBoundingClientRect();
     if (e.clientX < rect.left + rect.width * 0.65) return;
     e.preventDefault();
+    sealTyping();
     isResizing = true;
     resizeImg = img;
     startX = e.clientX;
@@ -512,10 +596,7 @@ function attachResizer(img) {
   function cleanup() {
     if (resizeImg) {
       resizeImg.classList.remove('resizing');
-      if (editor.contains(resizeImg)) {
-        pushUndoState(editor.innerHTML);
-        saveCurrentPage();
-      }
+      if (editor.contains(resizeImg)) recordChange();
     }
     isResizing = false;
     resizeImg = null;
@@ -525,6 +606,8 @@ function attachResizer(img) {
 // ─── HOSTNAME / FOLDER INIT ─────────────────────────────────────────────────
 
 function prettyName(host) {
+  // An address has no name to shorten to — 192.168.1.10 would come out as "1".
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
   host = host.replace(/^www\./, '');
   const parts = host.split('.');
   if (parts.length >= 2) {
@@ -615,6 +698,8 @@ window.addEventListener('message', (e) => {
 
 async function loadFolder(folderKey) {
   dismissSync();
+  // Callers that keep the old content flush first; the rest are replacing it.
+  discardTyping();
   ScratchDump.currentFolderKey = folderKey;
   ScratchDump.currentPageIdx = 0;
   ScratchDump.folderCache = { key: '', data: null };
@@ -687,6 +772,7 @@ async function handleExternalFolderChange(folderKey, folderData) {
 
 /** Render a folder version that came from another tab. Saves nothing. */
 async function adoptFolderData(fd) {
+  sealTyping();   // so undo can still get back to this tab's version
   const idx = Math.min(ScratchDump.currentPageIdx, Math.max(0, fd.pages.length - 1));
   ScratchDump.currentPageIdx = idx;
   await setEditorHTML(fd.pages[idx] || '');   // pushed onto the undo stack
@@ -773,6 +859,68 @@ addPageBtn.addEventListener('click', async () => {
   updateUndoButtons();
   editor.focus();
 });
+
+delPageBtn.addEventListener('click', async () => {
+  const folderKey = ScratchDump.currentFolderKey;
+  const idx = ScratchDump.currentPageIdx;
+  // Never decide from a folder we could not read, or before we know which
+  // folder this is.
+  if (loadFailed || !folderKey) return;
+  let fd;
+  try { fd = await getFolderData(folderKey); }
+  catch (err) { markLoadFailure(err, () => loadPage(idx)); return; }
+
+  // Deleting the last page would leave a folder with no page to show, so the
+  // only page is emptied instead — and the dialog says which of the two it is.
+  const only = fd.pages.length <= 1;
+  showConfirm(
+    only ? 'Clear this page?' : 'Delete this page?',
+    only
+      ? 'It is the only page here, so it will be emptied rather than removed. This cannot be undone.'
+      : `Delete Pg. ${idx + 1}? The pages after it move up one. This cannot be undone.`,
+    () => deletePage(folderKey, idx),
+    only ? 'Clear' : 'Delete');
+});
+
+async function deletePage(folderKey, idx) {
+  // Anything pending belongs to the page going away, so it is dropped rather
+  // than saved. Settling the chain first stops a write already travelling from
+  // landing after the delete and putting the page back.
+  discardTyping();
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  dirty = false;
+  await savePending;
+
+  try {
+    await storageReady;
+    // Decide from what is on disk, not from the cache — as deleteScratch does.
+    const raw = await storageGet([folderKey]);
+    const fd = (raw[folderKey] && Array.isArray(raw[folderKey].pages))
+      ? raw[folderKey] : { pages: [''] };
+    const doomed = extractImageIds(fd.pages[idx] || '');
+
+    if (fd.pages.length > 1) fd.pages.splice(idx, 1);
+    else fd.pages = [''];
+    await saveFolderData(folderKey, fd);
+    History.dropPage(folderKey, idx);
+
+    // Called after the save, so the page's own refs no longer count.
+    releaseUnreferencedImages(doomed).catch(err =>
+      console.warn('ScratchDump: image cleanup failed', err));
+
+    if (ScratchDump.currentFolderKey !== folderKey) return;
+    ScratchDump.currentPageIdx = Math.max(0, Math.min(idx - 1, fd.pages.length - 1));
+    await setEditorHTML(fd.pages[ScratchDump.currentPageIdx] || '');
+    updatePageUI(fd);
+    updateUndoButtons();
+    clearSaveError();
+    editor.focus();
+  } catch (err) {
+    console.warn('ScratchDump: could not delete page', err);
+    showSaveError(err);
+  }
+}
 
 // ─── FOLDER DROPDOWN ─────────────────────────────────────────────────────────
 
@@ -924,9 +1072,10 @@ async function createScratch() {
 }
 
 let confirmCallback = null;
-function showConfirm(title, msg, cb) {
+function showConfirm(title, msg, cb, okLabel = 'Delete') {
   document.getElementById('confirmTitle').textContent = title;
   document.getElementById('confirmMsg').textContent = msg;
+  confirmOk.textContent = okLabel;
   confirmCallback = cb;
   confirmDialog.classList.remove('hidden');
 }
@@ -966,7 +1115,30 @@ document.addEventListener('selectionchange', () => {
 
 // ─── COPY / PASTE BUTTONS ────────────────────────────────────────────────────
 
-copyBtn.addEventListener('click', () => {
+/**
+ * Write text to the clipboard. A write that follows a click needs no extension
+ * permission, so the manifest no longer asks for one; the execCommand route
+ * covers a frame where the async API is refused anyway.
+ * @returns {Promise<boolean>}
+ */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { /* nothing left to try */ }
+    ta.remove();
+    return ok;
+  }
+}
+
+copyBtn.addEventListener('click', async () => {
   const sel = window.getSelection();
   let text = '';
   if (sel && !sel.isCollapsed && editor.contains(sel.anchorNode)) {
@@ -974,19 +1146,31 @@ copyBtn.addEventListener('click', () => {
   } else {
     text = editor.innerText;
   }
-  navigator.clipboard.writeText(text).then(() => {
+  if (await copyText(text)) {
     copyBtn.classList.remove('flash-copy');
     void copyBtn.offsetWidth;
     copyBtn.classList.add('flash-copy');
-  });
+  }
 });
 
-pasteBtn.addEventListener('click', async () => {
-  try {
-    const text = await navigator.clipboard.readText();
+// Reading the clipboard is asked for here, the first time the button is used,
+// rather than at install — where it showed as "read data you copy and paste" to
+// everyone, including people who only ever paste with Ctrl+V. The request goes
+// out before anything is awaited: Chrome only shows the prompt from inside the
+// click. Once granted it returns at once without asking again.
+pasteBtn.addEventListener('click', () => {
+  chrome.permissions.request({ permissions: ['clipboardRead'] }, async (granted) => {
+    void chrome.runtime.lastError;
     editor.focus();
-    insertTextAtCursor(text);
-  } catch { editor.focus(); }
+    if (!granted) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      sealTyping();
+      if (insertTextAtCursor(text)) recordChange();
+    } catch (err) {
+      console.warn('ScratchDump: could not read the clipboard', err);
+    }
+  });
 });
 
 // ─── STT WIRING ──────────────────────────────────────────────────────────────
@@ -1001,9 +1185,8 @@ sttBtn.addEventListener('click', () => {
     (final, interim) => {
       if (final) {
         editor.focus();
-        insertTextAtCursor(final + ' ');
-        pushUndoState(editor.innerHTML);
-        saveCurrentPage();
+        sealTyping();
+        if (insertTextAtCursor(final + ' ')) recordChange();
       }
       updateSTTOverlay(interim);
     },
@@ -1108,7 +1291,7 @@ document.getElementById('sttLangSelect').addEventListener('change', () => {
   // actually there rather than guessing.
   initOcrSettings();
   initTransferSettings();
-  initSyncSettings();
+  // initSyncSettings() is not called: phone sync waits on the phone app.
   updateUndoButtons();
 })();
 
@@ -1207,8 +1390,9 @@ editor.addEventListener('contextmenu', async (e) => {
   showImageMenu(e.clientX, e.clientY, state === 'ready'
     ? [{
         label: 'Copy text',
-        onPick: () => navigator.clipboard.writeText(text).catch(err =>
-          console.warn('ScratchDump: could not copy recognized text', err)),
+        onPick: async () => {
+          if (!(await copyText(text))) console.warn('ScratchDump: could not copy recognized text');
+        },
       }]
     : [
         { label: OCR_MENU_LABEL[state] },

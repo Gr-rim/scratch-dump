@@ -1,20 +1,20 @@
 {
   "manifest_version": 3,
   "name": "ScratchDump",
-  "version": "1.1.8",
+  "version": "1.2.0",
   "description": "A per-site scratchpad that organises your notes by website, stored locally.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv++IWvHU06gakrKPdjQLGedg0sRFBRuqpF57ufECDkISOyoUNEC+T28MoSoeLiwxLq0i/vJRXVqr3vaLQ7R7TbjFT52UhqAabJQR0ji+kP037x/8KsUZbSSK4yUeOHPOoqzBTUSIJq9CFYifPM+XsiPpyQj6F/gfJKe9jz7gF0by5+N0U0q4kSg4vTSwR9z1p552FtneiJPUn1af0bO2OlKsZk219MsGcPNoztVOTYdFp1Zv6Yn+54/T7fXkFu8nm+FlM9MMEPEpNJOKoqeMxa3nU18DYDj/Gy1WJE6DUt5DoQNwTPsQgyeTiBWNe5bB0KTqerku6Ub/vg+9ypb73QIDAQAB",
   "permissions": [
     "storage",
     "activeTab",
-    "tabs",
     "scripting",
-    "clipboardRead",
-    "clipboardWrite",
     "unlimitedStorage"
   ],
+  "optional_permissions": [
+    "clipboardRead"
+  ],
   "optional_host_permissions": [
-    "https://cdn.jsdelivr.net/*",
-    "http://*/*"
+    "https://cdn.jsdelivr.net/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
@@ -29,14 +29,6 @@
   "background": {
     "service_worker": "backend/background.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["backend/content.js"],
-      "css": ["backend/content.css"],
-      "run_at": "document_idle"
-    }
-  ],
   "web_accessible_resources": [
     {
       "resources": ["frontend/panel.html"],

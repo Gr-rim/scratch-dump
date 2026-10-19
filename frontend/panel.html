@@ -84,25 +84,35 @@
       </select>
     </label>
     <div class="setting-row ocr-row">
-      <span>Sync with Phone</span>
-      <div class="ocr-controls">
-        <div class="xfer-btns">
-          <button id="syncPrimaryBtn" class="ocr-btn">Pair…</button>
-          <button id="syncUnpairBtn" class="ocr-btn is-danger" hidden>Unpair</button>
-        </div>
-        <span id="syncStatus" class="ocr-status">Not paired.</span>
-      </div>
-    </div>
-    <div class="setting-row ocr-row">
-      <span>Move to Phone</span>
+      <span>Folder file</span>
       <div class="ocr-controls">
         <div class="xfer-btns">
           <button id="exportBtn" class="ocr-btn">Export</button>
           <button id="importBtn" class="ocr-btn">Import</button>
         </div>
-        <span id="xferStatus" class="ocr-status">Save this folder to a file, or open one.</span>
+        <span id="xferStatus" class="ocr-status">Save this folder as a .scratch file, or open one.</span>
       </div>
-      <input id="importFile" type="file" accept=".scratch,application/octet-stream" hidden />
+    </div>
+    <div class="setting-row ocr-row">
+      <span>Export as</span>
+      <div class="ocr-controls">
+        <div class="xfer-btns">
+          <button id="mdExportBtn" class="ocr-btn">Markdown</button>
+          <button id="txtExportBtn" class="ocr-btn">Text</button>
+        </div>
+        <span id="readStatus" class="ocr-status">This folder as a file you can read anywhere.</span>
+      </div>
+    </div>
+    <div class="setting-row ocr-row">
+      <span>Backup</span>
+      <div class="ocr-controls">
+        <div class="xfer-btns">
+          <button id="backupBtn" class="ocr-btn">Back up all</button>
+          <button id="restoreBtn" class="ocr-btn">Restore</button>
+        </div>
+        <span id="backupStatus" class="ocr-status">Every folder in one file — for a new install or another computer.</span>
+      </div>
+      <input id="importFile" type="file" accept=".scratch,application/octet-stream" multiple hidden />
     </div>
     <div class="setting-row ocr-row">
       <span>Text in Images</span>
@@ -196,6 +206,14 @@
           </svg>
         </button>
         <button class="add-page-btn" id="addPageBtn" title="Add page" aria-label="Add page">+</button>
+        <button class="add-page-btn del-page-btn" id="delPageBtn" title="Delete page" aria-label="Delete page">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 14H6L5 6" />
+          </svg>
+        </button>
       </div>
       <div class="bottom-right">
         <button class="icon-btn" id="sttBtn" title="Voice input" aria-label="Voice input">
@@ -224,9 +242,8 @@
   <script src="noteStorage.js"></script>
   <script src="ocr.js"></script>
   <script src="wireFormat.js"></script>
+  <script src="textExport.js"></script>
   <script src="transfer.js"></script>
-  <script src="syncProtocol.js"></script>
-  <script src="syncClient.js"></script>
   <script src="settings.js"></script>
   <script src="historyManager.js"></script>
   <script src="stt.js"></script>
