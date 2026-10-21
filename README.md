@@ -21,7 +21,8 @@
 [![Opera](https://img.shields.io/badge/Opera-Works-FF1B2D?style=flat-square&logo=opera&logoColor=white)](https://github.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![100% Local](https://img.shields.io/badge/Storage-100%25_Local-green?style=flat-square)]()
-[![No Tracking](https://img.shields.io/badge/Tracking-None-red?style=flat-square)]()
+
+[<img src="img/chromeAddons.png" height="50px">](https://chromewebstore.google.com/detail/eongodgiimgmceclfmeieagcmgdgoihf)
 
 </div>
 
