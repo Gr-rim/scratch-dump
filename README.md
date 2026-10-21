@@ -22,7 +22,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 [![100% Local](https://img.shields.io/badge/Storage-100%25_Local-green?style=flat-square)]()
 
-[<img src="img/chromeAddons.png" height="50px">](https://chromewebstore.google.com/detail/eongodgiimgmceclfmeieagcmgdgoihf)
+[<img src="img/chrome_store.png" height="50px">](https://chromewebstore.google.com/detail/eongodgiimgmceclfmeieagcmgdgoihf)
 
 </div>
 
